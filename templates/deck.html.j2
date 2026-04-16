@@ -1,0 +1,411 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{{ summary.period }} Team Performance — The Anchor Group</title>
+
+  <!-- Reveal.js (CDN — swap to self-hosted on Pi for offline use) -->
+  <link rel="stylesheet"
+        href="https://cdnjs.cloudflare.com/ajax/libs/reveal.js/5.1.0/reveal.min.css">
+  <link rel="stylesheet"
+        href="https://cdnjs.cloudflare.com/ajax/libs/reveal.js/5.1.0/theme/white.min.css"
+        id="theme">
+
+  <style>
+    /* ── Brand overrides ─────────────────────────────────────── */
+    :root {
+      --color-primary:   {{ brand.color_primary }};
+      --color-secondary: {{ brand.color_secondary }};
+      --color-accent:    {{ brand.color_accent }};
+      --color-bg:        {{ brand.color_bg }};
+      --color-text:      {{ brand.color_text }};
+      --color-green:     {{ brand.color_green }};
+      --color-yellow:    {{ brand.color_yellow }};
+      --color-red:       {{ brand.color_red }};
+      --font-heading:    {{ brand.font_heading }};
+      --font-body:       {{ brand.font_body }};
+    }
+
+    .reveal { background-color: var(--color-bg); }
+    .reveal .slides section { font-family: var(--font-body); }
+    .reveal h1, .reveal h2, .reveal h3 {
+      font-family: var(--font-heading);
+      color: var(--color-primary);
+      text-transform: none;
+      letter-spacing: -0.3px;
+    }
+
+    /* ── Slide chrome ────────────────────────────────────────── */
+    .slide-header {
+      background: var(--color-primary);
+      color: white;
+      padding: 10px 32px;
+      margin: -20px -20px 20px;
+      border-radius: 0;
+      font-size: 0.55em;
+      letter-spacing: 0.8px;
+      text-transform: uppercase;
+      opacity: 0.9;
+    }
+
+    /* ── Status badge ────────────────────────────────────────── */
+    .status-badge {
+      display: inline-block;
+      padding: 5px 16px;
+      border-radius: 20px;
+      font-size: 0.55em;
+      font-weight: 700;
+      letter-spacing: 0.4px;
+      vertical-align: middle;
+      margin-left: 10px;
+    }
+    .status-Preferred         { background: var(--color-green);  color: white; }
+    .status-At-Risk           { background: var(--color-yellow); color: #1C2B3A; }
+    .status-Needs-Improvement { background: var(--color-red);    color: white; }
+    .status-No-Data           { background: #CCCCCC;             color: #1C2B3A; }
+
+    /* ── Gauge layout ────────────────────────────────────────── */
+    .gauge-row {
+      display: flex;
+      align-items: flex-start;
+      justify-content: center;
+      gap: 24px;
+      margin-top: 12px;
+    }
+    .gauge-hero  { flex: 0 0 auto; }
+    .gauge-group { display: flex; gap: 16px; align-items: flex-start; flex-wrap: wrap; justify-content: center; }
+    .gauge-secondary { flex: 0 0 auto; text-align: center; }
+
+    /* ── Team overview grid ──────────────────────────────────── */
+    .agent-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+      gap: 12px;
+      margin-top: 16px;
+    }
+    .agent-card {
+      border: 1.5px solid #E8ECEF;
+      border-radius: 10px;
+      padding: 12px 10px;
+      text-align: center;
+      background: white;
+    }
+    .agent-card .agent-name {
+      font-size: 0.55em;
+      font-weight: 700;
+      color: var(--color-primary);
+      margin-bottom: 6px;
+    }
+
+    /* ── Trend table ─────────────────────────────────────────── */
+    .trend-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.5em;
+      margin-top: 12px;
+    }
+    .trend-table th {
+      background: var(--color-primary);
+      color: white;
+      padding: 8px 12px;
+      text-align: left;
+      font-weight: 600;
+    }
+    .trend-table td {
+      padding: 8px 12px;
+      border-bottom: 1px solid #E8ECEF;
+      color: var(--color-text);
+    }
+    .trend-table tr:nth-child(even) td { background: #F7F9FB; }
+    .dot-green  { color: var(--color-green);  font-weight: 700; }
+    .dot-yellow { color: var(--color-yellow); font-weight: 700; }
+    .dot-red    { color: var(--color-red);    font-weight: 700; }
+
+    /* ── Footer tagline ──────────────────────────────────────── */
+    .slide-tagline {
+      font-size: 0.42em;
+      font-style: italic;
+      color: var(--color-secondary);
+      margin-top: 20px;
+      opacity: 0.85;
+    }
+
+    /* ── Title slide ─────────────────────────────────────────── */
+    .title-slide-inner {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      height: 100%;
+    }
+    .title-period {
+      font-size: 1.1em;
+      font-family: var(--font-heading);
+      color: var(--color-primary);
+      font-weight: 700;
+      margin-bottom: 6px;
+    }
+    .title-subtitle {
+      font-size: 0.55em;
+      color: var(--color-secondary);
+      margin-bottom: 24px;
+    }
+    .title-stats {
+      display: flex;
+      gap: 32px;
+      justify-content: center;
+      font-size: 0.5em;
+    }
+    .title-stat-block { text-align: center; }
+    .title-stat-number {
+      font-size: 2em;
+      font-weight: 700;
+      color: var(--color-primary);
+      line-height: 1;
+    }
+    .title-stat-label {
+      color: var(--color-text);
+      opacity: 0.65;
+      margin-top: 4px;
+    }
+  </style>
+</head>
+
+<body>
+<div class="reveal">
+<div class="slides">
+
+  <!-- ══════════════════════════════════════════════════════════
+       SLIDE 1: TITLE / TEAM OVERVIEW
+  ═══════════════════════════════════════════════════════════ -->
+  <section>
+    <div class="title-slide-inner">
+      <p class="title-period">{{ summary.period }}</p>
+      <p class="title-subtitle">Zillow Preferred Performance Report &nbsp;·&nbsp; The Anchor Group</p>
+
+      <div class="title-stats">
+        <div class="title-stat-block">
+          <div class="title-stat-number">{{ summary.total_agents }}</div>
+          <div class="title-stat-label">Agents Reporting</div>
+        </div>
+        <div class="title-stat-block">
+          <div class="title-stat-number"
+               style="color: var(--color-green);">
+            {{ summary.status_counts.get('Preferred', 0) }}
+          </div>
+          <div class="title-stat-label">Preferred ✓</div>
+        </div>
+        <div class="title-stat-block">
+          <div class="title-stat-number"
+               style="color: var(--color-yellow);">
+            {{ summary.status_counts.get('At Risk', 0) }}
+          </div>
+          <div class="title-stat-label">At Risk</div>
+        </div>
+        <div class="title-stat-block">
+          <div class="title-stat-number"
+               style="color: var(--color-red);">
+            {{ summary.status_counts.get('Needs Improvement', 0) }}
+          </div>
+          <div class="title-stat-label">Needs Improvement</div>
+        </div>
+      </div>
+
+      <!-- Mini agent grid -->
+      <div class="agent-grid" style="margin-top:24px; width:100%;">
+        {%- for agent in agents %}
+        {%- set status_class = agent.overall_status | replace(' ', '-') %}
+        <div class="agent-card">
+          <div class="agent-name">{{ agent.name }}</div>
+          <span class="status-badge status-{{ status_class }}"
+                style="font-size:0.85em;">
+            {%- if agent.overall_status == 'Preferred' %}✓ Preferred
+            {%- elif agent.overall_status == 'At Risk' %}⚠ At Risk
+            {%- else %}↑ Improving{%- endif %}
+          </span>
+        </div>
+        {%- endfor %}
+      </div>
+    </div>
+
+    <aside class="notes">
+      Team at a glance for {{ summary.period }}.
+      {{ summary.status_counts.get('Preferred', 0) }} agents hit Preferred status.
+      Focus today: celebrate wins, then support agents At Risk or Needs Improvement.
+      Dolphins, not sharks — lift each other up.
+    </aside>
+  </section>
+
+  <!-- ══════════════════════════════════════════════════════════
+       SLIDES 2–N: ONE SLIDE PER AGENT
+  ═══════════════════════════════════════════════════════════ -->
+  {%- for agent in agents %}
+  {%- set status_class = agent.overall_status | replace(' ', '-') %}
+  <section>
+    <div class="slide-header">
+      The Anchor Group &nbsp;·&nbsp; {{ summary.period }}
+    </div>
+
+    <h2 style="margin: 0 0 4px; font-size: 0.95em;">
+      {{ agent.name }}
+      <span class="status-badge status-{{ status_class }}">
+        {%- if agent.overall_status == 'Preferred' %}&#10003; Preferred
+        {%- elif agent.overall_status == 'At Risk' %}&#9888; At Risk
+        {%- elif agent.overall_status == 'Needs Improvement' %}&#9888; Needs Improvement
+        {%- else %}No Data{%- endif %}
+      </span>
+    </h2>
+
+    <div class="gauge-row">
+      <!-- Hero: pCVR -->
+      <div class="gauge-hero">
+        {{ gauges_by_agent[agent.agent_id].pCVR }}
+      </div>
+
+      <!-- Secondary gauges -->
+      <div class="gauge-group">
+        {%- for key in ['pickup_rate', 'csat', 'zhl_transfers'] %}
+        <div class="gauge-secondary">
+          {{ gauges_by_agent[agent.agent_id][key] }}
+        </div>
+        {%- endfor %}
+      </div>
+    </div>
+
+    <p class="slide-tagline">{{ brand.footer_message }}</p>
+
+    <aside class="notes">
+      {{ agent.name }} — {{ agent.period }}
+      Overall: {{ agent.overall_status }}
+      pCVR: {{ agent.metrics.pCVR.value }} (target: {{ agent.metrics.pCVR.target }})
+      Pickup Rate: {{ agent.metrics.pickup_rate.value }}
+      CSAT: {{ agent.metrics.csat.value }}
+      ZHL Transfers: {{ agent.metrics.zhl_transfers.value }}
+    </aside>
+  </section>
+  {%- endfor %}
+
+  <!-- ══════════════════════════════════════════════════════════
+       SLIDE N+1: TEAM METRIC AVERAGES
+  ═══════════════════════════════════════════════════════════ -->
+  <section>
+    <div class="slide-header">Team Averages &nbsp;·&nbsp; {{ summary.period }}</div>
+    <h2 style="font-size:0.85em; margin-bottom:4px;">How We're Doing as a Team</h2>
+
+    <table class="trend-table">
+      <thead>
+        <tr>
+          <th>Metric</th>
+          <th>Team Average</th>
+          <th>Target</th>
+          <th>Status</th>
+        </tr>
+      </thead>
+      <tbody>
+        {%- set metric_labels = {
+          'pCVR': 'Predicted Conversion Rate',
+          'pickup_rate': 'Pickup Rate',
+          'csat': 'CSAT',
+          'zhl_transfers': 'ZHL Transfers'
+        } %}
+        {%- for key in ['pCVR', 'pickup_rate', 'csat', 'zhl_transfers'] %}
+        {%- set avg = summary.metric_averages.get(key) %}
+        {%- set threshold = thresholds.metrics.get(key, {}) %}
+        {%- set target = threshold.get('target') %}
+        {%- set unit = threshold.get('unit', '') %}
+        {%- if avg is not none and target %}
+          {%- set pct = avg / target %}
+          {%- if pct >= 1.0 %}
+            {%- set row_status = 'green' %}
+            {%- set row_icon = '●' %}
+          {%- elif pct >= 0.85 %}
+            {%- set row_status = 'yellow' %}
+            {%- set row_icon = '●' %}
+          {%- else %}
+            {%- set row_status = 'red' %}
+            {%- set row_icon = '●' %}
+          {%- endif %}
+        {%- else %}
+          {%- set row_status = 'no_data' %}
+          {%- set row_icon = '○' %}
+        {%- endif %}
+        <tr>
+          <td><strong>{{ metric_labels.get(key, key) }}</strong></td>
+          <td>
+            {%- if avg is not none %}
+              {%- if unit == 'percent' %}{{ "%.1f"|format(avg * 100) }}%
+              {%- elif unit == 'score' %}{{ "%.1f"|format(avg) }}
+              {%- else %}{{ avg }}{%- endif %}
+            {%- else %}N/A{%- endif %}
+          </td>
+          <td>
+            {%- if target is not none %}
+              {%- if unit == 'percent' %}{{ "%.1f"|format(target * 100) }}%
+              {%- elif unit == 'score' %}{{ target }}
+              {%- else %}{{ target }}{%- endif %}
+            {%- else %}TBD{%- endif %}
+          </td>
+          <td class="dot-{{ row_status }}">{{ row_icon }}
+            {%- if row_status == 'green' %} On Track
+            {%- elif row_status == 'yellow' %} At Risk
+            {%- elif row_status == 'red' %} Below Target
+            {%- else %} No Data{%- endif %}
+          </td>
+        </tr>
+        {%- endfor %}
+      </tbody>
+    </table>
+
+    <p class="slide-tagline">{{ brand.footer_message }}</p>
+
+    <aside class="notes">
+      Team averages across all agents for {{ summary.period }}.
+      Use this slide to identify which metrics need team-wide attention vs. individual coaching.
+    </aside>
+  </section>
+
+  <!-- ══════════════════════════════════════════════════════════
+       CLOSING SLIDE
+  ═══════════════════════════════════════════════════════════ -->
+  <section
+    data-background-color="{{ brand.color_primary }}">
+    <div style="display:flex; flex-direction:column; align-items:center;
+                justify-content:center; height:100%; color:white;">
+      <p style="font-family:{{ brand.font_heading }};
+                font-size:1.3em; font-weight:700;
+                margin-bottom:10px; letter-spacing:-0.3px;">
+        The Anchor Group
+      </p>
+      <p style="font-size:0.6em; opacity:0.8; font-style:italic;
+                margin-bottom:32px;">
+        Dolphins, Not Sharks
+      </p>
+      <p style="font-size:0.5em; opacity:0.65; max-width:520px; text-align:center;
+                line-height:1.7;">
+        "{{ brand.footer_message }}"
+      </p>
+    </div>
+  </section>
+
+</div><!-- /slides -->
+</div><!-- /reveal -->
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/reveal.js/5.1.0/reveal.min.js"></script>
+<script>
+  Reveal.initialize({
+    hash: true,
+    slideNumber: 'c/t',
+    transition: 'fade',
+    transitionSpeed: 'fast',
+    controls: true,
+    progress: true,
+    center: true,
+    width: 960,
+    height: 700,
+    margin: 0.04,
+    plugins: []
+  });
+</script>
+</body>
+</html>

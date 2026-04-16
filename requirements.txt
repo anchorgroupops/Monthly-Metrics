@@ -1,0 +1,14 @@
+# Anchor Group Monthly Metrics — Python dependencies
+# Install with: pip install -r requirements.txt
+
+# HTTP client (FUB API)
+requests>=2.31.0
+
+# HTML templating
+Jinja2>=3.1.4
+
+# Claude API (threshold researcher)
+anthropic>=0.40.0
+
+# (Optional) Load env vars from a .env file during local development
+python-dotenv>=1.0.0

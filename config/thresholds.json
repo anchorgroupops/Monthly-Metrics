@@ -1,0 +1,44 @@
+{
+  "_comment": "Auto-updated by src/threshold_researcher.py before each monthly run. Do not edit manually unless you need to override researched values. Weights drive both gauge sizing and overall-status scoring.",
+  "last_updated": null,
+  "source": "not yet researched — run: python main.py --mode research",
+  "program_year": "2026",
+  "metrics": {
+    "pCVR": {
+      "label": "Predicted Conversion Rate",
+      "target": null,
+      "yellow_floor": null,
+      "unit": "percent",
+      "weight": 1.0,
+      "gauge_size": "hero",
+      "description": "Primary Zillow Preferred qualification KPI. Measures the probability that a Zillow lead converts to a closed transaction."
+    },
+    "pickup_rate": {
+      "label": "Pickup Rate",
+      "target": null,
+      "yellow_floor": null,
+      "unit": "percent",
+      "weight": 0.65,
+      "gauge_size": "secondary",
+      "description": "Percentage of inbound Zillow calls answered within the required response window."
+    },
+    "csat": {
+      "label": "Customer Satisfaction",
+      "target": null,
+      "yellow_floor": null,
+      "unit": "score",
+      "weight": 0.65,
+      "gauge_size": "secondary",
+      "description": "Average CSAT score from Zillow lead surveys. Scale and target confirmed by researcher."
+    },
+    "zhl_transfers": {
+      "label": "ZHL Transfers",
+      "target": null,
+      "yellow_floor": null,
+      "unit": "count",
+      "weight": 0.65,
+      "gauge_size": "secondary",
+      "description": "Number of Zillow Home Loans transfer referrals completed in the reporting period."
+    }
+  }
+}

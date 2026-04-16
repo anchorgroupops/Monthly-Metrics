@@ -1,0 +1,20 @@
+# Output (local preview only — never commit)
+output/
+
+# Environment & secrets
+.env
+config/secrets.py
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+.venv/
+venv/
+*.egg-info/
+dist/
+build/
+
+# OS
+.DS_Store
+Thumbs.db
