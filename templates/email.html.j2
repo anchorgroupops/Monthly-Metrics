@@ -50,9 +50,9 @@
                  height="48" style="margin:0 auto 12px;" />
             {%- else %}
             <p style="font-family:{{ brand.font_heading }};
-                      font-size:22px; font-weight:700; color:#FFFFFF;
-                      letter-spacing:0.5px; margin:0 0 4px;">
-              The Anchor Group
+                      font-size:22px; font-weight:{{ brand.font_heading_weight_title }}; color:#FFFFFF;
+                      letter-spacing:1.5px; text-transform:uppercase; margin:0 0 4px;">
+              The Anchor Team
             </p>
             {%- endif %}
             <p style="font-family:{{ brand.font_body }};
@@ -67,12 +67,13 @@
         <tr>
           <td style="padding:28px 32px 8px; text-align:left;">
             <p style="font-family:{{ brand.font_heading }};
-                      font-size:20px; font-weight:700;
-                      color:{{ brand.color_primary }}; margin:0 0 6px;">
+                      font-size:20px; font-weight:{{ brand.font_heading_weight_title }};
+                      color:{{ brand.color_primary }}; margin:0 0 6px; letter-spacing:0.3px;">
               Hi {{ agent.name.split()[0] }},
             </p>
             <p style="font-family:{{ brand.font_body }};
-                      font-size:14px; color:{{ brand.color_text }};
+                      font-size:14px; font-weight:{{ brand.font_body_weight_body }};
+                      color:{{ brand.color_text }};
                       line-height:1.6; margin:0;">
               Here's your Zillow Preferred snapshot for {{ agent.period }}.
             </p>

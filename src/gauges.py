@@ -30,7 +30,7 @@ STATUS_COLORS = {
     "no_data": "#CCCCCC",
 }
 
-TRACK_COLOR  = "#E8ECEF"
+TRACK_COLOR  = "#D8EAE8"   # Soft teal tint — harmonizes with Clear Water brand
 TEXT_COLOR   = BRAND["color_text"]
 
 # ── Size profiles ─────────────────────────────────────────────────────────────
