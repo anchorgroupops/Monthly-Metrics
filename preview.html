@@ -1,0 +1,523 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Anchor Team — Email Mockup Preview</title>
+  <!-- Closest Google Font approximations for Collier (serif) and Dax Pro (sans) -->
+  <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@400;600&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --clear-water:  #167272;
+      --pearl-aqua:   #5DC8BE;
+      --sandy-shore:  #F5EDE0;
+      --sandy-mid:    #D4A96A;
+      --text:         #1A1A1A;
+      --green:        #2ECC71;
+      --yellow:       #F0A500;
+      --red:          #E05C4B;
+      --track:        #D8EAE8;
+      --font-heading: 'Cormorant Garamond', Georgia, serif; /* approx. Collier */
+      --font-body:    'DM Sans', 'Helvetica Neue', Arial, sans-serif; /* approx. Dax Pro */
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: var(--font-body);
+      background: #E8DDD0;
+      padding: 40px 20px;
+      color: var(--text);
+    }
+
+    /* ── Page header ─────────────────────────────────── */
+    .page-label {
+      text-align: center;
+      margin-bottom: 32px;
+    }
+    .page-label h1 {
+      font-family: var(--font-heading);
+      font-size: 28px;
+      font-weight: 400;
+      color: var(--clear-water);
+      letter-spacing: 0.5px;
+      margin-bottom: 6px;
+    }
+    .page-label p {
+      font-size: 12px;
+      font-weight: 300;
+      color: var(--text);
+      opacity: 0.55;
+      letter-spacing: 0.3px;
+    }
+
+    /* ── Brand palette swatch bar ────────────────────── */
+    .palette {
+      display: flex;
+      justify-content: center;
+      gap: 16px;
+      margin-bottom: 36px;
+    }
+    .swatch {
+      text-align: center;
+    }
+    .swatch-block {
+      width: 64px; height: 48px;
+      border-radius: 8px;
+      margin-bottom: 6px;
+      box-shadow: 0 2px 6px rgba(0,0,0,0.12);
+    }
+    .swatch-name {
+      font-size: 11px;
+      font-weight: 500;
+      color: var(--text);
+      opacity: 0.7;
+    }
+    .swatch-hex {
+      font-size: 10px;
+      font-weight: 300;
+      color: var(--text);
+      opacity: 0.5;
+      margin-top: 2px;
+    }
+
+    /* ── Two-column email preview ────────────────────── */
+    .email-columns {
+      display: flex;
+      gap: 28px;
+      justify-content: center;
+      align-items: flex-start;
+      flex-wrap: wrap;
+    }
+    .email-column {
+      flex: 0 0 auto;
+    }
+    .column-label {
+      text-align: center;
+      font-size: 11px;
+      font-weight: 500;
+      letter-spacing: 0.8px;
+      text-transform: uppercase;
+      color: var(--text);
+      opacity: 0.5;
+      margin-bottom: 10px;
+    }
+
+    /* ── Email card ──────────────────────────────────── */
+    .email-card {
+      width: 420px;
+      background: #fff;
+      border-radius: 12px;
+      box-shadow: 0 4px 24px rgba(0,0,0,0.12);
+      overflow: hidden;
+    }
+
+    /* Header */
+    .email-header {
+      background: var(--clear-water);
+      padding: 22px 28px;
+      text-align: center;
+    }
+    .email-header-title {
+      font-family: var(--font-heading);
+      font-size: 18px;
+      font-weight: 400;
+      color: #fff;
+      letter-spacing: 2px;
+      text-transform: uppercase;
+      margin-bottom: 4px;
+    }
+    .email-header-sub {
+      font-size: 11px;
+      font-weight: 300;
+      color: rgba(255,255,255,0.72);
+      letter-spacing: 0.4px;
+    }
+
+    /* Greeting */
+    .email-greeting {
+      padding: 22px 28px 10px;
+    }
+    .email-greeting h2 {
+      font-family: var(--font-heading);
+      font-size: 20px;
+      font-weight: 400;
+      color: var(--clear-water);
+      margin-bottom: 5px;
+    }
+    .email-greeting p {
+      font-size: 13px;
+      font-weight: 300;
+      color: var(--text);
+      line-height: 1.6;
+    }
+
+    /* Status badge */
+    .email-badge-row {
+      padding: 8px 28px 0;
+    }
+    .badge {
+      display: inline-block;
+      padding: 4px 14px;
+      border-radius: 20px;
+      font-size: 12px;
+      font-weight: 500;
+      letter-spacing: 0.4px;
+    }
+    .badge-green  { background: var(--green);  color: #fff; }
+    .badge-yellow { background: var(--yellow); color: #1A1A1A; }
+    .badge-red    { background: var(--red);    color: #fff; }
+
+    /* Hero gauge section */
+    .email-hero {
+      padding: 20px 28px 12px;
+    }
+    .hero-box {
+      background: var(--sandy-shore);
+      border-radius: 10px;
+      padding: 18px 16px 12px;
+      text-align: center;
+    }
+    .gauge-target {
+      font-size: 10px;
+      font-weight: 300;
+      color: var(--text);
+      opacity: 0.55;
+      margin-top: 4px;
+      letter-spacing: 0.2px;
+    }
+
+    /* Secondary gauges */
+    .email-secondary {
+      padding: 0 28px 22px;
+      display: flex;
+      gap: 10px;
+    }
+    .secondary-box {
+      flex: 1;
+      background: var(--sandy-shore);
+      border-radius: 8px;
+      padding: 10px 6px 10px;
+      text-align: center;
+    }
+
+    /* Divider */
+    .email-divider {
+      margin: 0 28px;
+      border: none;
+      border-top: 1px solid #E8ECEF;
+    }
+
+    /* Footer */
+    .email-footer {
+      padding: 18px 28px 22px;
+      text-align: center;
+    }
+    .email-footer-quote {
+      font-size: 12px;
+      font-style: italic;
+      font-weight: 300;
+      color: var(--pearl-aqua);
+      line-height: 1.6;
+      margin-bottom: 12px;
+    }
+    .email-footer-meta {
+      font-size: 10px;
+      font-weight: 300;
+      color: var(--text);
+      opacity: 0.4;
+    }
+
+    /* ── Font note ────────────────────────────────────── */
+    .font-note {
+      text-align: center;
+      margin-top: 36px;
+      font-size: 11px;
+      font-weight: 300;
+      color: var(--text);
+      opacity: 0.5;
+      line-height: 1.7;
+    }
+  </style>
+</head>
+<body>
+
+<!-- ── Page header ──────────────────────────────────────── -->
+<div class="page-label">
+  <h1>The Anchor Team — Email Mockup</h1>
+  <p>Zillow Preferred Performance Report · April 2026 · Preview (mock data)</p>
+</div>
+
+<!-- ── Brand palette ────────────────────────────────────── -->
+<div class="palette">
+  <div class="swatch">
+    <div class="swatch-block" style="background:#167272;"></div>
+    <div class="swatch-name">Clear Water</div>
+    <div class="swatch-hex">#167272</div>
+  </div>
+  <div class="swatch">
+    <div class="swatch-block" style="background:#5DC8BE;"></div>
+    <div class="swatch-name">Pearl Aqua</div>
+    <div class="swatch-hex">#5DC8BE</div>
+  </div>
+  <div class="swatch">
+    <div class="swatch-block" style="background:#F5EDE0; border:1px solid #ddd;"></div>
+    <div class="swatch-name">Sandy Shore</div>
+    <div class="swatch-hex">#F5EDE0</div>
+  </div>
+  <div class="swatch">
+    <div class="swatch-block" style="background:#2ECC71;"></div>
+    <div class="swatch-name">Preferred</div>
+    <div class="swatch-hex">#2ECC71</div>
+  </div>
+  <div class="swatch">
+    <div class="swatch-block" style="background:#F0A500;"></div>
+    <div class="swatch-name">At Risk</div>
+    <div class="swatch-hex">#F0A500</div>
+  </div>
+  <div class="swatch">
+    <div class="swatch-block" style="background:#E05C4B;"></div>
+    <div class="swatch-name">Needs Work</div>
+    <div class="swatch-hex">#E05C4B</div>
+  </div>
+</div>
+
+<!-- ── Two email previews ────────────────────────────────── -->
+<div class="email-columns">
+
+  <!-- ═══ CARD 1: Alex Rivera — Preferred (all green) ═══ -->
+  <div class="email-column">
+    <div class="column-label">✓ Preferred Status</div>
+    <div class="email-card">
+      <div class="email-header">
+        <div class="email-header-title">The Anchor Team</div>
+        <div class="email-header-sub">Dolphins, Not Sharks &nbsp;·&nbsp; April 2026 Performance Report</div>
+      </div>
+      <div class="email-greeting">
+        <h2>Hi Alex,</h2>
+        <p>Here's your Zillow Preferred snapshot for April 2026.</p>
+      </div>
+      <div class="email-badge-row">
+        <span class="badge badge-green">&#10003; Zillow Preferred</span>
+      </div>
+
+      <!-- Hero: pCVR gauge -->
+      <div class="email-hero">
+        <div class="hero-box">
+          <!-- pCVR = 3.8% / target 3.5% = 108% → GREEN, full arc -->
+          <svg xmlns="http://www.w3.org/2000/svg" width="200" height="120"
+               viewBox="0 0 200 120" role="img" aria-label="pCVR: 3.8%">
+            <!-- Background track -->
+            <path d="M 18.000 108.000 A 82.000 82.000 0 0 1 182.000 108.000"
+                  fill="none" stroke="#D8EAE8" stroke-width="18" stroke-linecap="round"/>
+            <!-- Full green fill (108% = capped at full) -->
+            <path d="M 18.000 108.000 A 82.000 82.000 0 0 1 182.000 108.000"
+                  fill="none" stroke="#2ECC71" stroke-width="18" stroke-linecap="round"/>
+            <!-- Value label -->
+            <text x="100" y="104" text-anchor="middle" dominant-baseline="auto"
+                  font-family="'DM Sans', Arial, sans-serif"
+                  font-size="26" font-weight="700" fill="#2ECC71">3.8%</text>
+            <!-- Metric label -->
+            <text x="100" y="130" text-anchor="middle" dominant-baseline="hanging"
+                  font-family="'DM Sans', Arial, sans-serif"
+                  font-size="11" fill="#1A1A1A" opacity="0.7">Predicted Conversion Rate</text>
+          </svg>
+          <div class="gauge-target">Target: 3.5%</div>
+        </div>
+      </div>
+
+      <!-- Secondary gauges -->
+      <div class="email-secondary">
+        <!-- Pickup Rate: 91% / 85% = 107% → GREEN full -->
+        <div class="secondary-box">
+          <svg xmlns="http://www.w3.org/2000/svg" width="110" height="80"
+               viewBox="0 0 130 80" role="img" aria-label="Pickup Rate: 91%">
+            <path d="M 12.000 72.000 A 53.000 53.000 0 0 1 118.000 72.000"
+                  fill="none" stroke="#D8EAE8" stroke-width="13" stroke-linecap="round"/>
+            <path d="M 12.000 72.000 A 53.000 53.000 0 0 1 118.000 72.000"
+                  fill="none" stroke="#2ECC71" stroke-width="13" stroke-linecap="round"/>
+            <text x="65" y="68" text-anchor="middle" dominant-baseline="auto"
+                  font-family="'DM Sans', Arial, sans-serif"
+                  font-size="18" font-weight="700" fill="#2ECC71">91%</text>
+            <text x="65" y="88" text-anchor="middle" dominant-baseline="hanging"
+                  font-family="'DM Sans', Arial, sans-serif"
+                  font-size="9" fill="#1A1A1A" opacity="0.7">Pickup Rate</text>
+          </svg>
+          <div class="gauge-target">Target: 85%</div>
+        </div>
+
+        <!-- CSAT: 4.7 / 4.5 = 104% → GREEN full -->
+        <div class="secondary-box">
+          <svg xmlns="http://www.w3.org/2000/svg" width="110" height="80"
+               viewBox="0 0 130 80" role="img" aria-label="CSAT: 4.7">
+            <path d="M 12.000 72.000 A 53.000 53.000 0 0 1 118.000 72.000"
+                  fill="none" stroke="#D8EAE8" stroke-width="13" stroke-linecap="round"/>
+            <path d="M 12.000 72.000 A 53.000 53.000 0 0 1 118.000 72.000"
+                  fill="none" stroke="#2ECC71" stroke-width="13" stroke-linecap="round"/>
+            <text x="65" y="68" text-anchor="middle" dominant-baseline="auto"
+                  font-family="'DM Sans', Arial, sans-serif"
+                  font-size="18" font-weight="700" fill="#2ECC71">4.7</text>
+            <text x="65" y="88" text-anchor="middle" dominant-baseline="hanging"
+                  font-family="'DM Sans', Arial, sans-serif"
+                  font-size="9" fill="#1A1A1A" opacity="0.7">Customer Satisfaction</text>
+          </svg>
+          <div class="gauge-target">Target: 4.5</div>
+        </div>
+
+        <!-- ZHL: 5 / 4 = 125% → GREEN full -->
+        <div class="secondary-box">
+          <svg xmlns="http://www.w3.org/2000/svg" width="110" height="80"
+               viewBox="0 0 130 80" role="img" aria-label="ZHL Transfers: 5">
+            <path d="M 12.000 72.000 A 53.000 53.000 0 0 1 118.000 72.000"
+                  fill="none" stroke="#D8EAE8" stroke-width="13" stroke-linecap="round"/>
+            <path d="M 12.000 72.000 A 53.000 53.000 0 0 1 118.000 72.000"
+                  fill="none" stroke="#2ECC71" stroke-width="13" stroke-linecap="round"/>
+            <text x="65" y="68" text-anchor="middle" dominant-baseline="auto"
+                  font-family="'DM Sans', Arial, sans-serif"
+                  font-size="18" font-weight="700" fill="#2ECC71">5</text>
+            <text x="65" y="88" text-anchor="middle" dominant-baseline="hanging"
+                  font-family="'DM Sans', Arial, sans-serif"
+                  font-size="9" fill="#1A1A1A" opacity="0.7">ZHL Transfers</text>
+          </svg>
+          <div class="gauge-target">Target: 4</div>
+        </div>
+      </div>
+
+      <hr class="email-divider">
+      <div class="email-footer">
+        <div class="email-footer-quote">
+          "Keep showing up with integrity — that's what sets great agents apart."
+        </div>
+        <div class="email-footer-meta">
+          The Anchor Team &nbsp;·&nbsp; April 2026 &nbsp;·&nbsp; Powered by Follow Up Boss
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══ CARD 2: Jordan Lee — At Risk (mixed) ═══ -->
+  <div class="email-column">
+    <div class="column-label">⚠ At Risk Status</div>
+    <div class="email-card">
+      <div class="email-header">
+        <div class="email-header-title">The Anchor Team</div>
+        <div class="email-header-sub">Dolphins, Not Sharks &nbsp;·&nbsp; April 2026 Performance Report</div>
+      </div>
+      <div class="email-greeting">
+        <h2>Hi Jordan,</h2>
+        <p>Here's your Zillow Preferred snapshot for April 2026.</p>
+      </div>
+      <div class="email-badge-row">
+        <span class="badge badge-yellow">&#9888; At Risk</span>
+      </div>
+
+      <!-- Hero: pCVR gauge — RED, 60% -->
+      <div class="email-hero">
+        <div class="hero-box">
+          <!-- pCVR = 2.1% / target 3.5% = 60% → RED
+               fill_end = 180 + 0.60*180 = 288°
+               cos(288°)=0.3090, sin(288°)=-0.9511
+               End: x=100+82*0.309=125.3, y=108+82*(-0.951)=30.0
+               sweep=108° < 180 → large-arc=0 -->
+          <svg xmlns="http://www.w3.org/2000/svg" width="200" height="120"
+               viewBox="0 0 200 120" role="img" aria-label="pCVR: 2.1%">
+            <path d="M 18.000 108.000 A 82.000 82.000 0 0 1 182.000 108.000"
+                  fill="none" stroke="#D8EAE8" stroke-width="18" stroke-linecap="round"/>
+            <path d="M 18.000 108.000 A 82.000 82.000 0 0 1 125.340 30.010"
+                  fill="none" stroke="#E05C4B" stroke-width="18" stroke-linecap="round"/>
+            <text x="100" y="104" text-anchor="middle" dominant-baseline="auto"
+                  font-family="'DM Sans', Arial, sans-serif"
+                  font-size="26" font-weight="700" fill="#E05C4B">2.1%</text>
+            <text x="100" y="130" text-anchor="middle" dominant-baseline="hanging"
+                  font-family="'DM Sans', Arial, sans-serif"
+                  font-size="11" fill="#1A1A1A" opacity="0.7">Predicted Conversion Rate</text>
+          </svg>
+          <div class="gauge-target">Target: 3.5%</div>
+        </div>
+      </div>
+
+      <!-- Secondary gauges -->
+      <div class="email-secondary">
+        <!-- Pickup Rate: 74%/85% = 87% → YELLOW
+             fill_end=336.6°, cos=0.9171, sin=-0.3971
+             End: x=65+53*0.9171=113.6, y=72+53*(-0.3971)=51.0
+             sweep=156.6° < 180 → large=0 -->
+        <div class="secondary-box">
+          <svg xmlns="http://www.w3.org/2000/svg" width="110" height="80"
+               viewBox="0 0 130 80" role="img" aria-label="Pickup Rate: 74%">
+            <path d="M 12.000 72.000 A 53.000 53.000 0 0 1 118.000 72.000"
+                  fill="none" stroke="#D8EAE8" stroke-width="13" stroke-linecap="round"/>
+            <path d="M 12.000 72.000 A 53.000 53.000 0 0 1 113.610 51.050"
+                  fill="none" stroke="#F0A500" stroke-width="13" stroke-linecap="round"/>
+            <text x="65" y="68" text-anchor="middle" dominant-baseline="auto"
+                  font-family="'DM Sans', Arial, sans-serif"
+                  font-size="18" font-weight="700" fill="#F0A500">74%</text>
+            <text x="65" y="88" text-anchor="middle" dominant-baseline="hanging"
+                  font-family="'DM Sans', Arial, sans-serif"
+                  font-size="9" fill="#1A1A1A" opacity="0.7">Pickup Rate</text>
+          </svg>
+          <div class="gauge-target">Target: 85%</div>
+        </div>
+
+        <!-- CSAT: 4.1/4.5 = 91% → YELLOW
+             fill_end=343.8°, cos=0.9608, sin=-0.2790
+             End: x=65+53*0.9608=115.9, y=72+53*(-0.279)=57.2
+             sweep=163.8° < 180 → large=0 -->
+        <div class="secondary-box">
+          <svg xmlns="http://www.w3.org/2000/svg" width="110" height="80"
+               viewBox="0 0 130 80" role="img" aria-label="CSAT: 4.1">
+            <path d="M 12.000 72.000 A 53.000 53.000 0 0 1 118.000 72.000"
+                  fill="none" stroke="#D8EAE8" stroke-width="13" stroke-linecap="round"/>
+            <path d="M 12.000 72.000 A 53.000 53.000 0 0 1 115.920 57.210"
+                  fill="none" stroke="#F0A500" stroke-width="13" stroke-linecap="round"/>
+            <text x="65" y="68" text-anchor="middle" dominant-baseline="auto"
+                  font-family="'DM Sans', Arial, sans-serif"
+                  font-size="18" font-weight="700" fill="#F0A500">4.1</text>
+            <text x="65" y="88" text-anchor="middle" dominant-baseline="hanging"
+                  font-family="'DM Sans', Arial, sans-serif"
+                  font-size="9" fill="#1A1A1A" opacity="0.7">Customer Satisfaction</text>
+          </svg>
+          <div class="gauge-target">Target: 4.5</div>
+        </div>
+
+        <!-- ZHL: 2/4 = 50% → RED
+             fill_end=270°, cos=0, sin=-1
+             End: x=65, y=72-53=19
+             sweep=90° < 180 → large=0 -->
+        <div class="secondary-box">
+          <svg xmlns="http://www.w3.org/2000/svg" width="110" height="80"
+               viewBox="0 0 130 80" role="img" aria-label="ZHL Transfers: 2">
+            <path d="M 12.000 72.000 A 53.000 53.000 0 0 1 118.000 72.000"
+                  fill="none" stroke="#D8EAE8" stroke-width="13" stroke-linecap="round"/>
+            <path d="M 12.000 72.000 A 53.000 53.000 0 0 1 65.000 19.000"
+                  fill="none" stroke="#E05C4B" stroke-width="13" stroke-linecap="round"/>
+            <text x="65" y="68" text-anchor="middle" dominant-baseline="auto"
+                  font-family="'DM Sans', Arial, sans-serif"
+                  font-size="18" font-weight="700" fill="#E05C4B">2</text>
+            <text x="65" y="88" text-anchor="middle" dominant-baseline="hanging"
+                  font-family="'DM Sans', Arial, sans-serif"
+                  font-size="9" fill="#1A1A1A" opacity="0.7">ZHL Transfers</text>
+          </svg>
+          <div class="gauge-target">Target: 4</div>
+        </div>
+      </div>
+
+      <hr class="email-divider">
+      <div class="email-footer">
+        <div class="email-footer-quote">
+          "Keep showing up with integrity — that's what sets great agents apart."
+        </div>
+        <div class="email-footer-meta">
+          The Anchor Team &nbsp;·&nbsp; April 2026 &nbsp;·&nbsp; Powered by Follow Up Boss
+        </div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<div class="font-note">
+  * Fonts shown: Cormorant Garamond (≈ Collier) &amp; DM Sans (≈ Dax Pro).<br>
+  Final emails will use your licensed Collier + Dax Pro fonts once installed on the Pi.
+</div>
+
+</body>
+</html>
