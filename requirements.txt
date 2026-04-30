@@ -12,3 +12,6 @@ anthropic>=0.40.0
 
 # (Optional) Load env vars from a .env file during local development
 python-dotenv>=1.0.0
+
+# Testing
+pytest>=8.0.0
