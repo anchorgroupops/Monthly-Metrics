@@ -9,6 +9,34 @@ respect to email delivery — it researches the latest Zillow KPIs, scores the
 prior month's data, and queues draft emails. **Admin approval is required**
 via the dashboard before any email is sent.
 
+## Pi quickstart (recommended)
+
+```bash
+# SSH into the Pi, then:
+sudo mkdir -p /opt && sudo chown "$USER" /opt
+git clone https://github.com/anchorgroupops/Monthly-Metrics.git /opt/Monthly-Metrics
+cd /opt/Monthly-Metrics
+git checkout claude/zillow-digest-system-OGMIF   # remove after PR merges to main
+
+scripts/install.sh                       # creates venv, installs deps, scaffolds .env, runs tests
+nano .env                                # fill in ANTHROPIC_API_KEY, SMTP_*, EMAIL_FROM
+scripts/install_cron.sh                  # installs the 09:00-on-the-1st cron entry
+
+# Smoke-test the whole pipeline without waiting for cron:
+scripts/heartbeat.sh
+tail logs/heartbeat-$(date +%Y%m%d).log
+```
+
+The dashboard runs on `:5000`. To reach it from your laptop, use SSH port forwarding:
+
+```bash
+# from your laptop, NOT the Pi:
+ssh -L 5000:127.0.0.1:5000 pi@your-pi-host
+# then on the Pi:
+.venv/bin/python main.py --mode dashboard
+# open http://127.0.0.1:5000 in your laptop browser
+```
+
 ## Pipeline
 
 ```
