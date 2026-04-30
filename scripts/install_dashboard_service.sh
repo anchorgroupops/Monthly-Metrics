@@ -17,15 +17,14 @@ if [ ! -f "$UNIT_SRC" ]; then
   exit 1
 fi
 
-if [ ! -x "$REPO_DIR/scripts/serve.sh" ]; then
-  echo "ERROR: scripts/serve.sh not executable. Run scripts/install.sh first." >&2
-  exit 1
+# Auto-bootstrap the venv + dependencies if a previous install.sh run is
+# missing. Keeps the deployment to two commands instead of three.
+if [ ! -x "$REPO_DIR/.venv/bin/gunicorn" ]; then
+  log "venv or gunicorn missing — running scripts/install.sh first…"
+  bash "$REPO_DIR/scripts/install.sh"
 fi
 
-if [ ! -x "$REPO_DIR/.venv/bin/gunicorn" ]; then
-  echo "ERROR: gunicorn not installed. Run scripts/install.sh first." >&2
-  exit 1
-fi
+chmod +x "$REPO_DIR/scripts/serve.sh"
 
 log "Installing $UNIT_DST (running as user '$RUN_USER')"
 sudo install -m 0644 "$UNIT_SRC" "$UNIT_DST"

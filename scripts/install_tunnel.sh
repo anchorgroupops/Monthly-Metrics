@@ -101,20 +101,11 @@ else
   echo "$ROUTE_OUT"
 fi
 
-# 6. Install (or re-sync) the systemd service ---------------------------------
-# `cloudflared service install` COPIES ~/.cloudflared/config.yml and credentials
-# to /etc/cloudflared/. Subsequent edits to ~/.cloudflared/config.yml do NOT
-# propagate. So on every run we re-sync /etc/cloudflared with the current
-# config + credentials, then restart the service.
-if ! systemctl list-unit-files --no-legend 2>/dev/null | grep -q "^cloudflared.service"; then
-  log "Installing cloudflared as a systemd service…"
-  sudo cloudflared --config "$CONFIG" service install
-fi
-
-# Re-sync /etc/cloudflared on every run so a re-installed tunnel actually
-# takes effect. Write the system config with /etc/cloudflared paths so it
-# resolves under the systemd service (which doesn't use the user's $HOME).
-log "Re-syncing /etc/cloudflared with current config + credentials…"
+# 6. Write /etc/cloudflared/* BEFORE service install -------------------------
+# The systemd service runs cloudflared with --config /etc/cloudflared/config.yml.
+# Write the system-side config + credentials with the current tunnel UUID so a
+# re-install (e.g. after deleting and recreating the tunnel in CF) propagates.
+log "Writing /etc/cloudflared/config.yml + credentials…"
 sudo mkdir -p /etc/cloudflared
 SYS_CRED="/etc/cloudflared/$(basename "$CRED_FILE")"
 sudo install -m 0600 "$CRED_FILE" "$SYS_CRED"
@@ -128,6 +119,23 @@ ingress:
   - service: http_status:404
 EOF
 
+# Detect a previously-installed service via filesystem (more reliable than
+# `systemctl list-unit-files` which differs across Pi OS releases).
+SERVICE_INSTALLED=false
+for f in /etc/systemd/system/cloudflared.service \
+         /lib/systemd/system/cloudflared.service \
+         /usr/lib/systemd/system/cloudflared.service; do
+  [ -e "$f" ] && SERVICE_INSTALLED=true && break
+done
+
+if ! $SERVICE_INSTALLED; then
+  log "Installing cloudflared as a systemd service…"
+  # Pass the system config explicitly so cloudflared doesn't see two configs
+  # and exit non-zero with a "conflicting configuration" warning.
+  sudo cloudflared --config /etc/cloudflared/config.yml service install
+fi
+
+sudo systemctl daemon-reload
 sudo systemctl enable cloudflared
 sudo systemctl restart cloudflared
 sleep 3
