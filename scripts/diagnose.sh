@@ -27,13 +27,29 @@ hdr "1. Dashboard service (anchor-dashboard)"
 
 if systemctl list-unit-files --no-legend 2>/dev/null | grep -q "^anchor-dashboard.service"; then
   ok "systemd unit installed"
-  if systemctl is-active --quiet anchor-dashboard; then
-    ok "service is active"
-  else
-    bad "service is NOT active"
-    echo "    → sudo systemctl status anchor-dashboard"
-    echo "    → sudo journalctl -u anchor-dashboard -n 30"
-  fi
+  STATE="$(systemctl is-active anchor-dashboard 2>/dev/null || true)"
+  SUBSTATE="$(systemctl show -p SubState --value anchor-dashboard 2>/dev/null || true)"
+  case "$STATE" in
+    active)
+      if [ "$SUBSTATE" = "running" ]; then
+        ok "service is active (running)"
+      else
+        warn "service active but SubState=$SUBSTATE"
+      fi
+      ;;
+    activating)
+      bad "service is stuck in 'activating' state (SubState=$SUBSTATE) — likely crash-looping"
+      echo "    last 15 journal lines:"
+      sudo journalctl -u anchor-dashboard -n 15 --no-pager 2>/dev/null \
+        | sed 's/^/      /'
+      ;;
+    *)
+      bad "service is NOT active (state=$STATE, sub=$SUBSTATE)"
+      echo "    last 15 journal lines:"
+      sudo journalctl -u anchor-dashboard -n 15 --no-pager 2>/dev/null \
+        | sed 's/^/      /'
+      ;;
+  esac
 else
   bad "systemd unit NOT installed"
   echo "    → run: scripts/install_dashboard_service.sh"
