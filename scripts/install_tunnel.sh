@@ -101,13 +101,35 @@ else
   echo "$ROUTE_OUT"
 fi
 
-# 6. Install as a systemd service ----------------------------------------------
+# 6. Install (or re-sync) the systemd service ---------------------------------
+# `cloudflared service install` COPIES ~/.cloudflared/config.yml and credentials
+# to /etc/cloudflared/. Subsequent edits to ~/.cloudflared/config.yml do NOT
+# propagate. So on every run we re-sync /etc/cloudflared with the current
+# config + credentials, then restart the service.
 if ! systemctl list-unit-files --no-legend 2>/dev/null | grep -q "^cloudflared.service"; then
   log "Installing cloudflared as a systemd service…"
   sudo cloudflared --config "$CONFIG" service install
 fi
 
-sudo systemctl enable --now cloudflared
+# Re-sync /etc/cloudflared on every run so a re-installed tunnel actually
+# takes effect. Write the system config with /etc/cloudflared paths so it
+# resolves under the systemd service (which doesn't use the user's $HOME).
+log "Re-syncing /etc/cloudflared with current config + credentials…"
+sudo mkdir -p /etc/cloudflared
+SYS_CRED="/etc/cloudflared/$(basename "$CRED_FILE")"
+sudo install -m 0600 "$CRED_FILE" "$SYS_CRED"
+sudo tee /etc/cloudflared/config.yml >/dev/null <<EOF
+tunnel: $TUNNEL_UUID
+credentials-file: $SYS_CRED
+
+ingress:
+  - hostname: $HOSTNAME
+    service: $LOCAL_SERVICE
+  - service: http_status:404
+EOF
+
+sudo systemctl enable cloudflared
+sudo systemctl restart cloudflared
 sleep 3
 sudo systemctl status cloudflared --no-pager --lines=8 || true
 

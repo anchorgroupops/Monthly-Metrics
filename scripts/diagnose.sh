@@ -83,9 +83,25 @@ if command -v cloudflared >/dev/null 2>&1; then
 fi
 
 if [ -f "$HOME/.cloudflared/config.yml" ]; then
-  ok "config.yml present"
+  ok "config.yml present (~/.cloudflared/config.yml)"
 else
   bad "config.yml MISSING at ~/.cloudflared/config.yml"
+fi
+
+# `cloudflared service install` runs the daemon out of /etc/cloudflared/.
+# Verify the system-wide config matches the user-side config, otherwise the
+# running service is using a stale tunnel UUID (this is a real failure mode
+# we hit during a re-install).
+if [ -f /etc/cloudflared/config.yml ]; then
+  SYS_UUID="$(awk '/^tunnel:/ {print $2; exit}' /etc/cloudflared/config.yml 2>/dev/null)"
+  USER_UUID="$(awk '/^tunnel:/ {print $2; exit}' "$HOME/.cloudflared/config.yml" 2>/dev/null)"
+  if [ -n "$SYS_UUID" ] && [ -n "$USER_UUID" ] && [ "$SYS_UUID" = "$USER_UUID" ]; then
+    ok "/etc/cloudflared/config.yml matches user config (tunnel $SYS_UUID)"
+  elif [ -n "$SYS_UUID" ]; then
+    bad "/etc/cloudflared/config.yml references a DIFFERENT tunnel UUID ($SYS_UUID)"
+    echo "    The systemd service is running with stale config."
+    echo "    → run: scripts/install_tunnel.sh   (re-syncs /etc/cloudflared)"
+  fi
 fi
 
 if systemctl list-unit-files --no-legend 2>/dev/null | grep -q "^cloudflared.service"; then
