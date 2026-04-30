@@ -1,0 +1,15 @@
+{% extends "admin/_base.html" %}
+{% block title %}Get started · Anchor Metrics{% endblock %}
+{% block content %}
+<section class="bg-white rounded-xl shadow p-10 text-center">
+  <h1 class="text-2xl font-bold brand-primary-text mb-2">Welcome to Anchor Metrics</h1>
+  <p class="text-slate-600 mb-8 max-w-lg mx-auto">
+    No data has been ingested yet. Upload your first monthly Zillow Preferred
+    export (CSV or JSON) to populate the leaderboard.
+  </p>
+  <a href="{{ url_for('upload') }}"
+     class="inline-block brand-primary text-white font-semibold px-6 py-3 rounded-lg hover:opacity-90">
+    Upload first month's data
+  </a>
+</section>
+{% endblock %}

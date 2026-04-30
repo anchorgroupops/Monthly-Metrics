@@ -3,11 +3,14 @@
 Anchor Group Monthly Metrics — CLI Entry Point
 
 Usage:
-  python main.py --mode research              # Update thresholds via AI web research
-  python main.py --mode review                # Generate all output locally for preview
-  python main.py --mode review --mock         # Review using mock data (no FUB API needed)
-  python main.py --mode send                  # Generate + send emails (called by n8n)
-  python main.py --agent "Jane Smith"         # Preview a single agent (--mock optional)
+  python main.py --mode research                       # Refresh KPIs + thresholds
+  python main.py --mode upload <file.csv|file.json>    # Ingest admin upload
+  python main.py --mode review                         # Generate output locally
+  python main.py --mode review --mock                  # Review with mock data
+  python main.py --mode draft                          # Queue drafts for approval
+  python main.py --mode dashboard                      # Start Flask admin UI
+  python main.py --mode send                           # Send approved drafts
+  python main.py --agent "Jane Smith"                  # Preview a single agent
 """
 
 import argparse
@@ -43,29 +46,49 @@ def setup_logging(verbose: bool = False) -> None:
 
 def cmd_research(args) -> int:
     from src.threshold_researcher import run_research
-    print("\n── Researching Zillow Preferred thresholds… ──")
+    print("\n── Researching Zillow Preferred KPIs… ──")
     run_research()
+    return 0
+
+
+# ── Mode: upload ──────────────────────────────────────────────────────────────
+
+def cmd_upload(args) -> int:
+    from src.csv_ingest import parse_file
+    from src.storage import save_period
+
+    if not args.file:
+        print("  ERROR: --mode upload requires a file path. Example:")
+        print("    python main.py --mode upload data/april_2026.csv")
+        return 1
+
+    print(f"\n── Upload Mode ──────────────────────────────────────────────────────")
+    print(f"  File: {args.file}")
+
+    try:
+        agents = parse_file(args.file)
+    except (FileNotFoundError, ValueError) as e:
+        print(f"  ERROR: {e}")
+        return 1
+
+    suffix = args.file.rsplit(".", 1)[-1].lower()
+    source = "csv" if suffix == "csv" else "json"
+    run_id = save_period(agents, source=source, file_path=args.file)
+
+    print(f"  Ingested {len(agents)} agent record(s) — run #{run_id}.")
+    print(f"  Next: python main.py --mode draft   to queue draft emails for approval.\n")
     return 0
 
 
 # ── Mode: review ──────────────────────────────────────────────────────────────
 
 def cmd_review(args) -> int:
-    from src.fub_client import fetch_all_agents, mock_agents
     from src.metrics import score_all_agents
     from src.review_mode import run_review
 
     print("\n── Review Mode ──────────────────────────────────────────────────────")
-    if args.mock:
-        print("  Using MOCK data (no FUB API key required)")
-        agents_data = mock_agents()
-    else:
-        _check_fub_key()
-        print("  Fetching agent data from Follow Up Boss…")
-        agents_data = fetch_all_agents()
-
+    agents_data = _load_source_agents(args)
     if not agents_data:
-        print("  No agent data available. Check config/settings.py AGENTS list.")
         return 1
 
     print(f"  Scoring {len(agents_data)} agent(s)…")
@@ -76,70 +99,156 @@ def cmd_review(args) -> int:
         if not scored:
             return 1
 
-    print(f"  Generating review output…")
+    print("  Generating review output…")
     run_review(scored)
+    return 0
+
+
+# ── Mode: draft ───────────────────────────────────────────────────────────────
+
+def cmd_draft(args) -> int:
+    """Queue draft emails for admin approval. Does NOT send."""
+    from src.email_builder import build_email
+    from src.metrics import score_all_agents
+    from src.storage import queue_draft
+
+    print("\n── Draft Mode ───────────────────────────────────────────────────────")
+    agents_data = _load_source_agents(args)
+    if not agents_data:
+        return 1
+
+    scored = score_all_agents(agents_data)
+    if args.agent:
+        scored = _filter_agent(scored, args.agent)
+        if not scored:
+            return 1
+
+    queued = 0
+    for agent in scored:
+        html = build_email(agent)
+        queue_draft(agent["agent_id"], agent["period"], html)
+        queued += 1
+        print(f"  Queued draft for {agent['name']}")
+
+    print(f"\n  {queued} draft(s) queued. Review at:")
+    print("    python main.py --mode dashboard\n")
+    return 0
+
+
+# ── Mode: dashboard ───────────────────────────────────────────────────────────
+
+def cmd_dashboard(args) -> int:
+    from src.dashboard import create_app
+
+    print("\n── Dashboard ────────────────────────────────────────────────────────")
+    print("  Starting Flask on http://127.0.0.1:5000")
+    print("  Set ADMIN_PASSWORD env var to enable login (default: 'anchor').\n")
+    app = create_app()
+    app.run(host="127.0.0.1", port=5000, debug=args.verbose)
     return 0
 
 
 # ── Mode: send ────────────────────────────────────────────────────────────────
 
 def cmd_send(args) -> int:
-    from src.fub_client import fetch_all_agents, mock_agents
-    from src.metrics import score_all_agents
-    from src.email_builder import build_all_emails
+    """Send only drafts in the approval queue with status='approved'."""
+    from src.storage import get_draft, list_drafts, mark_sent
 
     print("\n── Send Mode ────────────────────────────────────────────────────────")
-
-    if args.mock:
-        print("  Using MOCK data")
-        agents_data = mock_agents()
-    else:
-        _check_fub_key()
-        print("  Fetching agent data from Follow Up Boss…")
-        agents_data = fetch_all_agents()
-
-    if not agents_data:
-        print("  No agent data. Aborting.")
+    approved = list_drafts(status="approved")
+    if not approved:
+        print("  No approved drafts in queue. Approve some via the dashboard first.")
         return 1
 
-    print(f"  Scoring {len(agents_data)} agent(s)…")
-    scored = score_all_agents(agents_data)
+    if args.dry_run:
+        print(f"  DRY RUN — would send {len(approved)} email(s):")
+        for d in approved:
+            print(f"    → {d['name']} <{d['email']}>")
+        return 0
 
-    if args.agent:
-        scored = _filter_agent(scored, args.agent)
-        if not scored:
-            return 1
+    if not SMTP_USER or not SMTP_PASSWORD:
+        print(
+            "  ERROR: SMTP credentials not set. Set SMTP_USER and SMTP_PASSWORD env vars.\n"
+            "  Use --dry-run to skip sending."
+        )
+        return 1
 
-    emails = build_all_emails(scored)
-    _send_emails(emails, dry_run=args.dry_run)
+    print(f"  Connecting to {SMTP_HOST}:{SMTP_PORT}…")
+    try:
+        with smtplib.SMTP(SMTP_HOST, SMTP_PORT) as server:
+            server.ehlo()
+            server.starttls()
+            server.login(SMTP_USER, SMTP_PASSWORD)
+
+            from src.storage import period_label
+            for d in approved:
+                full = get_draft(d["id"])
+                msg = MIMEMultipart("alternative")
+                msg["Subject"] = EMAIL_SUBJECT_TEMPLATE.format(month=period_label(full["period"]))
+                msg["From"] = f"{EMAIL_FROM_NAME} <{EMAIL_FROM_ADDRESS}>"
+                msg["To"] = full["email"]
+                msg.attach(MIMEText(full["html"], "html", "utf-8"))
+
+                server.sendmail(EMAIL_FROM_ADDRESS, full["email"], msg.as_string())
+                mark_sent(full["id"])
+                print(f"  ✓ Sent to {full['name']} <{full['email']}>")
+
+    except smtplib.SMTPException as e:
+        print(f"  SMTP error: {e}")
+        return 1
+
+    print(f"\n  {len(approved)} email(s) sent successfully.\n")
     return 0
 
 
-# ── Mode: single agent ────────────────────────────────────────────────────────
+# ── Mode: single agent shortcut ───────────────────────────────────────────────
 
 def cmd_agent(args) -> int:
-    """Preview a single agent — writes only their email to review/ and prints path."""
-    from src.fub_client import mock_agents, fetch_all_agents
-    from src.metrics import score_all_agents
-    from src.review_mode import run_review
-
-    print(f"\n── Single Agent Preview: {args.agent} ──")
-    if args.mock:
-        agents_data = mock_agents()
-    else:
-        _check_fub_key()
-        agents_data = fetch_all_agents()
-
-    scored = score_all_agents(agents_data)
-    filtered = _filter_agent(scored, args.agent)
-    if not filtered:
-        return 1
-
-    run_review(filtered)
-    return 0
+    return cmd_review(args)
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
+
+def _load_source_agents(args) -> list[dict]:
+    """
+    Resolve the data source for review/draft modes.
+
+    Precedence:
+      1. --mock                → mock_agents()
+      2. --period <YYYY-MM>    → SQLite (admin uploaded earlier)
+      3. --source fub          → live FUB pull (preserved behavior)
+      4. default (no flags)    → most-recent SQLite period if any, else FUB
+    """
+    from src.fub_client import fetch_all_agents, mock_agents
+    from src.storage import list_periods, load_period
+
+    if args.mock:
+        print("  Source: mock data")
+        return mock_agents()
+
+    if args.period:
+        print(f"  Source: SQLite ({args.period})")
+        agents = load_period(args.period)
+        if not agents:
+            print(f"  No data found for period {args.period}. Did you run --mode upload?")
+        return agents
+
+    if args.source == "fub":
+        _check_fub_key()
+        print("  Source: live FUB API")
+        return fetch_all_agents()
+
+    # Auto: prefer most recent SQLite period, fall back to FUB
+    periods = list_periods()
+    if periods:
+        latest = periods[0]
+        print(f"  Source: SQLite ({latest})  [auto — pass --source fub to override]")
+        return load_period(latest)
+
+    _check_fub_key()
+    print("  Source: live FUB API  [no SQLite history yet]")
+    return fetch_all_agents()
+
 
 def _check_fub_key() -> None:
     from config.settings import FUB_API_KEY
@@ -147,7 +256,8 @@ def _check_fub_key() -> None:
         print(
             "  ERROR: FUB_API_KEY environment variable not set.\n"
             "  Set it with: export FUB_API_KEY=your_key\n"
-            "  Or use --mock for local testing without a live key."
+            "  Or use --mock for local testing without a live key.\n"
+            "  Or use --mode upload to load CSV/JSON instead."
         )
         sys.exit(1)
 
@@ -163,46 +273,6 @@ def _filter_agent(scored: list[dict], name: str) -> list[dict]:
     return matched
 
 
-def _send_emails(emails: list[dict], dry_run: bool = False) -> None:
-    """Send emails via SMTP. Use --dry-run to skip actual delivery."""
-    if dry_run:
-        print(f"  DRY RUN — would send {len(emails)} email(s):")
-        for item in emails:
-            print(f"    → {item['agent']['name']} <{item['agent']['email']}>")
-        return
-
-    if not SMTP_USER or not SMTP_PASSWORD:
-        print(
-            "  ERROR: SMTP credentials not set. Set SMTP_USER and SMTP_PASSWORD env vars.\n"
-            "  Use --dry-run to skip sending."
-        )
-        sys.exit(1)
-
-    print(f"  Connecting to {SMTP_HOST}:{SMTP_PORT}…")
-    try:
-        with smtplib.SMTP(SMTP_HOST, SMTP_PORT) as server:
-            server.ehlo()
-            server.starttls()
-            server.login(SMTP_USER, SMTP_PASSWORD)
-
-            for item in emails:
-                agent = item["agent"]
-                msg = MIMEMultipart("alternative")
-                msg["Subject"] = EMAIL_SUBJECT_TEMPLATE.format(month=agent["period"])
-                msg["From"]    = f"{EMAIL_FROM_NAME} <{EMAIL_FROM_ADDRESS}>"
-                msg["To"]      = agent["email"]
-                msg.attach(MIMEText(item["html"], "html", "utf-8"))
-
-                server.sendmail(EMAIL_FROM_ADDRESS, agent["email"], msg.as_string())
-                print(f"  ✓ Sent to {agent['name']} <{agent['email']}>")
-
-    except smtplib.SMTPException as e:
-        print(f"  SMTP error: {e}")
-        sys.exit(1)
-
-    print(f"\n  {len(emails)} email(s) sent successfully.\n")
-
-
 # ── Entry point ───────────────────────────────────────────────────────────────
 
 def main() -> int:
@@ -213,8 +283,23 @@ def main() -> int:
     )
     parser.add_argument(
         "--mode",
-        choices=["research", "review", "send"],
+        choices=["research", "upload", "review", "draft", "dashboard", "send"],
         help="Execution mode",
+    )
+    parser.add_argument(
+        "--file",
+        metavar="PATH",
+        help="(upload mode) Path to CSV or JSON file",
+    )
+    parser.add_argument(
+        "--source",
+        choices=["fub", "sqlite"],
+        help="Override default data source for review/draft modes",
+    )
+    parser.add_argument(
+        "--period",
+        metavar="YYYY-MM",
+        help="Load a specific period from SQLite (e.g. 2026-04)",
     )
     parser.add_argument(
         "--agent",
@@ -224,7 +309,7 @@ def main() -> int:
     parser.add_argument(
         "--mock",
         action="store_true",
-        help="Use mock data instead of live FUB API",
+        help="Use mock data instead of live FUB API or SQLite",
     )
     parser.add_argument(
         "--dry-run",
@@ -237,22 +322,31 @@ def main() -> int:
         help="Enable debug logging",
     )
 
-    args = parser.parse_args()
+    # Allow `python main.py --mode upload <path>` positional shortcut
+    args, extras = parser.parse_known_args()
+    if args.mode == "upload" and not args.file and extras:
+        args.file = extras[0]
+
     setup_logging(args.verbose)
 
-    # Single-agent shortcut: defaults to review mode
     if args.agent and not args.mode:
         args.mode = "review"
 
     if args.mode == "research":
         return cmd_research(args)
-    elif args.mode == "review":
+    if args.mode == "upload":
+        return cmd_upload(args)
+    if args.mode == "review":
         return cmd_review(args)
-    elif args.mode == "send":
+    if args.mode == "draft":
+        return cmd_draft(args)
+    if args.mode == "dashboard":
+        return cmd_dashboard(args)
+    if args.mode == "send":
         return cmd_send(args)
-    else:
-        parser.print_help()
-        return 0
+
+    parser.print_help()
+    return 0
 
 
 if __name__ == "__main__":

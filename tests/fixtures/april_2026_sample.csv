@@ -1,0 +1,4 @@
+agent_id,name,email,period,speed_to_action,work_with_rate,csat,appt_set_rate,appt_met_rate
+mock-001,Alex Rivera,alex@example.com,April 2026,180,0.62,0.91,0.71,0.78
+mock-002,Jordan Lee,jordan@example.com,April 2026,420,0.41,0.78,0.52,0.61
+mock-003,Morgan Chen,morgan@example.com,April 2026,720,0.28,0.65,0.38,0.45

@@ -257,17 +257,20 @@
       </span>
     </h2>
 
-    <div class="gauge-row">
-      <!-- Hero: pCVR -->
-      <div class="gauge-hero">
-        {{ gauges_by_agent[agent.agent_id].pCVR }}
-      </div>
+    {%- set hero = agent.metrics_list | selectattr('gauge_size', 'equalto', 'hero') | list | first %}
+    {%- set secondaries = agent.metrics_list | rejectattr('gauge_size', 'equalto', 'hero') | list %}
 
-      <!-- Secondary gauges -->
+    <div class="gauge-row">
+      {%- if hero %}
+      <div class="gauge-hero">
+        {{ gauges_by_agent[agent.agent_id][hero.key] }}
+      </div>
+      {%- endif %}
+
       <div class="gauge-group">
-        {%- for key in ['pickup_rate', 'csat', 'zhl_transfers'] %}
+        {%- for m in secondaries %}
         <div class="gauge-secondary">
-          {{ gauges_by_agent[agent.agent_id][key] }}
+          {{ gauges_by_agent[agent.agent_id][m.key] }}
         </div>
         {%- endfor %}
       </div>
@@ -278,10 +281,10 @@
     <aside class="notes">
       {{ agent.name }} — {{ agent.period }}
       Overall: {{ agent.overall_status }}
-      pCVR: {{ agent.metrics.pCVR.value }} (target: {{ agent.metrics.pCVR.target }})
-      Pickup Rate: {{ agent.metrics.pickup_rate.value }}
-      CSAT: {{ agent.metrics.csat.value }}
-      ZHL Transfers: {{ agent.metrics.zhl_transfers.value }}
+      Operational Readiness: {{ agent.operational_readiness or 'N/A' }}
+      {%- for m in agent.metrics_list %}
+      {{ m.label }}: {{ m.value }} (target: {{ m.target }})
+      {%- endfor %}
     </aside>
   </section>
   {%- endfor %}
@@ -303,19 +306,17 @@
         </tr>
       </thead>
       <tbody>
-        {%- set metric_labels = {
-          'pCVR': 'Predicted Conversion Rate',
-          'pickup_rate': 'Pickup Rate',
-          'csat': 'CSAT',
-          'zhl_transfers': 'ZHL Transfers'
-        } %}
-        {%- for key in ['pCVR', 'pickup_rate', 'csat', 'zhl_transfers'] %}
+        {%- for key, threshold in thresholds.metrics.items() %}
         {%- set avg = summary.metric_averages.get(key) %}
-        {%- set threshold = thresholds.metrics.get(key, {}) %}
         {%- set target = threshold.get('target') %}
         {%- set unit = threshold.get('unit', '') %}
+        {%- set direction = threshold.get('direction', 'higher_is_better') %}
         {%- if avg is not none and target %}
-          {%- set pct = avg / target %}
+          {%- if direction == 'lower_is_better' %}
+            {%- set pct = (target / avg) if avg else 0 %}
+          {%- else %}
+            {%- set pct = avg / target %}
+          {%- endif %}
           {%- if pct >= 1.0 %}
             {%- set row_status = 'green' %}
             {%- set row_icon = '●' %}
@@ -331,7 +332,7 @@
           {%- set row_icon = '○' %}
         {%- endif %}
         <tr>
-          <td><strong>{{ metric_labels.get(key, key) }}</strong></td>
+          <td><strong>{{ threshold.get('label', key) }}</strong></td>
           <td>
             {%- if avg is not none %}
               {%- if unit == 'percent' %}{{ "%.1f"|format(avg * 100) }}%

@@ -97,7 +97,11 @@ def _format_value(value: Optional[float], unit: str, metric_key: str) -> str:
         return f"{value:.1f}"
     if unit == "count":
         return str(int(round(value)))
-    # Fallback
+    if unit == "seconds":
+        if value < 60:
+            return f"{int(round(value))}s"
+        mins, secs = divmod(int(round(value)), 60)
+        return f"{mins}m {secs:02d}s" if secs else f"{mins}m"
     return f"{value:.2f}"
 
 
@@ -111,6 +115,7 @@ def build_gauge(
     unit: str,
     metric_key: str,
     size: str = "secondary",
+    direction: str = "higher_is_better",
 ) -> str:
     """
     Build and return an inline SVG arc gauge string.
@@ -137,11 +142,14 @@ def build_gauge(
     start_deg = 180.0
     end_deg   = 0.0    # equivalent to 360°
 
-    # Fraction filled: clamp 0–1
+    # Fraction filled: clamp 0–1.25. For lower-is-better metrics, invert so the
+    # gauge fills more when value is *under* the target.
     if value is not None and target is not None and target > 0:
-        fraction = min(max(value / target, 0.0), 1.25)  # allow slight overshoot
-    elif value is not None and target is None:
-        fraction = 0.0
+        if direction == "lower_is_better":
+            raw = (target / value) if value > 0 else 1.25
+        else:
+            raw = value / target
+        fraction = min(max(raw, 0.0), 1.25)
     else:
         fraction = 0.0
 
@@ -215,6 +223,7 @@ def gauge_from_scored_metric(scored: dict) -> str:
         unit=scored["unit"],
         metric_key=scored["key"],
         size=scored.get("gauge_size", "secondary"),
+        direction=scored.get("direction", "higher_is_better"),
     )
 
 

@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{% block title %}Anchor Metrics Admin{% endblock %}</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://unpkg.com/htmx.org@1.9.12" defer></script>
+  <style>
+    body {
+      font-family: {{ brand.font_body }};
+      background: {{ brand.color_bg }};
+      color: {{ brand.color_text }};
+    }
+    h1, h2, h3, .font-heading {
+      font-family: {{ brand.font_heading }};
+    }
+    .brand-primary { background-color: {{ brand.color_primary }}; }
+    .brand-primary-text { color: {{ brand.color_primary }}; }
+    .brand-accent { background-color: {{ brand.color_accent }}; }
+    .brand-secondary { background-color: {{ brand.color_secondary }}; }
+  </style>
+</head>
+<body class="min-h-screen">
+
+{% if session.authed %}
+<header class="brand-primary text-white">
+  <div class="max-w-5xl mx-auto px-4 py-3 flex flex-wrap items-center justify-between gap-3">
+    <div>
+      <a href="{{ url_for('home') }}" class="font-heading text-lg font-bold tracking-wide uppercase">The Anchor Group</a>
+      <p class="text-xs opacity-75">Monthly Metrics · Admin</p>
+    </div>
+    <nav class="flex gap-2 text-sm">
+      <a href="{{ url_for('home') }}"   class="px-3 py-1.5 rounded hover:bg-white/10">Home</a>
+      <a href="{{ url_for('upload') }}" class="px-3 py-1.5 rounded hover:bg-white/10">Upload</a>
+      <a href="{{ url_for('logout') }}" class="px-3 py-1.5 rounded hover:bg-white/10">Logout</a>
+    </nav>
+  </div>
+</header>
+{% endif %}
+
+<main class="max-w-5xl mx-auto px-4 py-6">
+  {% with messages = get_flashed_messages(with_categories=true) %}
+    {% for category, message in messages %}
+    <div class="mb-4 px-4 py-3 rounded-lg text-sm
+                {% if category == 'error' %}bg-rose-100 text-rose-900 border border-rose-200
+                {% else %}bg-emerald-100 text-emerald-900 border border-emerald-200{% endif %}">
+      {{ message }}
+    </div>
+    {% endfor %}
+  {% endwith %}
+
+  {% block content %}{% endblock %}
+</main>
+
+</body>
+</html>

@@ -109,7 +109,11 @@
           </td>
         </tr>
 
-        <!-- ── HERO GAUGE (pCVR) ─────────────────────────────────────── -->
+        {%- set hero = agent.metrics_list | selectattr('gauge_size', 'equalto', 'hero') | list | first %}
+        {%- set secondaries = agent.metrics_list | rejectattr('gauge_size', 'equalto', 'hero') | list %}
+
+        <!-- ── HERO GAUGE ────────────────────────────────────────────── -->
+        {%- if hero %}
         <tr>
           <td class="hero-section"
               style="padding:24px 32px 16px; text-align:center;">
@@ -118,15 +122,17 @@
                 <td align="center"
                     style="background-color:{{ brand.color_bg }};
                            border-radius:10px; padding:20px 16px 12px;">
-                  <!-- Inline SVG gauge for pCVR -->
-                  {{ gauges.pCVR }}
+                  {{ gauges[hero.key] }}
                   <p style="font-family:{{ brand.font_body }};
                              font-size:11px; color:{{ brand.color_text }};
                              opacity:0.6; margin:4px 0 0;
                              letter-spacing:0.2px;">
                     Target:
-                    {%- if agent.metrics.pCVR.target %}
-                      {{ "%.1f"|format(agent.metrics.pCVR.target * 100) }}%
+                    {%- if hero.target is not none %}
+                      {%- if hero.unit == 'percent' %} {{ "%.1f"|format(hero.target * 100) }}%
+                      {%- elif hero.unit == 'seconds' %} under {{ hero.target|int }}s
+                      {%- elif hero.unit == 'score' %} {{ hero.target }}
+                      {%- else %} {{ hero.target }}{%- endif %}
                     {%- else %} TBD{%- endif %}
                   </p>
                 </td>
@@ -134,29 +140,29 @@
             </table>
           </td>
         </tr>
+        {%- endif %}
 
         <!-- ── SECONDARY GAUGES ROW ──────────────────────────────────── -->
+        {%- if secondaries %}
         <tr>
           <td style="padding:0 32px 24px;">
             <table width="100%" cellpadding="0" cellspacing="0" border="0">
               <tr>
-                {%- for key in ['pickup_rate', 'csat', 'zhl_transfers'] %}
+                {%- for m in secondaries %}
                 <td class="gauge-cell"
-                    width="33%" align="center"
+                    align="center"
                     style="padding:12px 6px;
                            background-color:{{ brand.color_bg }};
-                           border-radius:8px;
-                           {%- if not loop.last %} margin-right:8px;{%- endif %}">
-                  {{ gauges[key] }}
-                  {%- set m = agent.metrics[key] %}
+                           border-radius:8px;">
+                  {{ gauges[m.key] }}
                   <p style="font-family:{{ brand.font_body }};
                              font-size:10px; color:{{ brand.color_text }};
                              opacity:0.55; margin:3px 0 0;">
                     Target:
-                    {%- if m.target %}
-                      {%- if m.unit == 'percent' %}{{ "%.0f"|format(m.target * 100) }}%
-                      {%- elif m.unit == 'score' %}{{ m.target }}
-                      {%- else %}{{ m.target }}{%- endif %}
+                    {%- if m.target is not none %}
+                      {%- if m.unit == 'percent' %} {{ "%.0f"|format(m.target * 100) }}%
+                      {%- elif m.unit == 'seconds' %} <{{ m.target|int }}s
+                      {%- else %} {{ m.target }}{%- endif %}
                     {%- else %} TBD{%- endif %}
                   </p>
                 </td>
@@ -168,6 +174,35 @@
             </table>
           </td>
         </tr>
+        {%- endif %}
+
+        <!-- ── OPERATIONAL READINESS ──────────────────────────────────── -->
+        {%- if agent.operational_readiness is not none %}
+        <tr>
+          <td style="padding:0 32px 16px;">
+            <table width="100%" cellpadding="0" cellspacing="0" border="0">
+              <tr>
+                <td align="center"
+                    style="padding:14px 12px;
+                           background-color:{{ brand.color_primary }};
+                           color:#FFFFFF;
+                           border-radius:8px;">
+                  <span style="font-family:{{ brand.font_body }};
+                               font-size:11px; opacity:0.8;
+                               letter-spacing:1.2px; text-transform:uppercase;">
+                    Operational Readiness
+                  </span>
+                  <span style="font-family:{{ brand.font_heading }};
+                               font-size:22px; font-weight:700;
+                               margin-left:12px;">
+                    {{ agent.operational_readiness }}
+                  </span>
+                </td>
+              </tr>
+            </table>
+          </td>
+        </tr>
+        {%- endif %}
 
         <!-- ── DIVIDER ───────────────────────────────────────────────── -->
         <tr>
@@ -189,7 +224,7 @@
                       font-size:11px; color:{{ brand.color_text }};
                       opacity:0.45; margin:0;">
               The Anchor Group &nbsp;·&nbsp; {{ agent.period }}
-              &nbsp;·&nbsp; Powered by Follow Up Boss
+              &nbsp;·&nbsp; Zillow Preferred Performance
             </p>
           </td>
         </tr>

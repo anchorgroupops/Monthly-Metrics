@@ -1,0 +1,39 @@
+{% extends "admin/_base.html" %}
+{% block title %}Review {{ period_label }} · Anchor Metrics{% endblock %}
+{% block content %}
+
+<section class="mb-6 flex flex-wrap items-center justify-between gap-3">
+  <div>
+    <h1 class="text-2xl font-bold brand-primary-text">Review · {{ period_label }}</h1>
+    <p class="text-sm text-slate-500">Approve or reject each agent's draft email before sending.</p>
+  </div>
+  <form method="POST" action="{{ url_for('approve_all', period=period) }}">
+    <button type="submit"
+            class="brand-secondary text-white font-semibold px-4 py-2 rounded-lg text-sm hover:opacity-90"
+            onclick="return confirm('Approve all pending drafts?');">
+      Approve all pending
+    </button>
+  </form>
+</section>
+
+<div class="bg-white rounded-xl shadow overflow-hidden">
+  {% if drafts %}
+  <ul id="drafts" class="divide-y divide-slate-100">
+    {% for d in drafts %}
+    {% include "admin/_draft_row.html" %}
+    {% endfor %}
+  </ul>
+  {% else %}
+  <div class="p-10 text-center text-slate-500">
+    No drafts queued for this period yet. Run
+    <code class="px-1 py-0.5 bg-slate-100 rounded">python main.py --mode draft</code>
+    to queue them.
+  </div>
+  {% endif %}
+</div>
+
+<section class="mt-6 text-xs text-slate-400">
+  ← <a href="{{ url_for('home') }}" class="hover:underline">Back to leaderboard</a>
+</section>
+
+{% endblock %}

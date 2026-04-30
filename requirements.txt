@@ -7,8 +7,14 @@ requests>=2.31.0
 # HTML templating
 Jinja2>=3.1.4
 
-# Claude API (threshold researcher)
+# Claude API (KPI + threshold researcher)
 anthropic>=0.40.0
+
+# Admin dashboard
+Flask>=3.0.0
 
 # (Optional) Load env vars from a .env file during local development
 python-dotenv>=1.0.0
+
+# Tests
+pytest>=8.0.0

@@ -1,5 +1,15 @@
 # Output (local preview only — never commit)
 output/
+logs/
+
+# SQLite history (admin-uploaded data — never commit)
+data/*.db
+data/*.db-journal
+data/*.db-wal
+data/*.db-shm
+
+# Threshold backups
+config/thresholds.json.bak
 
 # Environment & secrets
 .env
@@ -14,6 +24,7 @@ venv/
 *.egg-info/
 dist/
 build/
+.pytest_cache/
 
 # OS
 .DS_Store

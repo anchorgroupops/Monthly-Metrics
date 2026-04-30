@@ -1,0 +1,39 @@
+<li id="draft-{{ d.id }}" class="p-4 flex flex-wrap items-center justify-between gap-3">
+  <div class="flex-1 min-w-0">
+    <div class="font-medium">{{ d.name or d.agent_id }}</div>
+    <div class="text-xs text-slate-500 truncate">{{ d.email }}</div>
+    <div class="mt-1">
+      {% if d.status == 'pending' %}
+        <span class="inline-block px-2 py-0.5 rounded-full text-xs font-medium bg-amber-100 text-amber-800">Pending</span>
+      {% elif d.status == 'approved' %}
+        <span class="inline-block px-2 py-0.5 rounded-full text-xs font-medium bg-emerald-100 text-emerald-800">Approved</span>
+      {% elif d.status == 'rejected' %}
+        <span class="inline-block px-2 py-0.5 rounded-full text-xs font-medium bg-rose-100 text-rose-800">Rejected</span>
+      {% elif d.status == 'sent' %}
+        <span class="inline-block px-2 py-0.5 rounded-full text-xs font-medium bg-slate-200 text-slate-700">Sent</span>
+      {% endif %}
+    </div>
+  </div>
+  <div class="flex flex-wrap gap-2">
+    <a href="{{ url_for('draft_preview', draft_id=d.id) }}" target="_blank"
+       class="px-3 py-1.5 rounded-lg text-xs border border-slate-300 hover:bg-slate-50">
+      Preview
+    </a>
+    {% if d.status == 'pending' or d.status == 'rejected' %}
+    <button hx-post="{{ url_for('draft_approve', draft_id=d.id) }}"
+            hx-target="#draft-{{ d.id }}"
+            hx-swap="outerHTML"
+            class="px-3 py-1.5 rounded-lg text-xs bg-emerald-500 text-white hover:bg-emerald-600">
+      Approve
+    </button>
+    {% endif %}
+    {% if d.status == 'pending' or d.status == 'approved' %}
+    <button hx-post="{{ url_for('draft_reject', draft_id=d.id) }}"
+            hx-target="#draft-{{ d.id }}"
+            hx-swap="outerHTML"
+            class="px-3 py-1.5 rounded-lg text-xs bg-rose-500 text-white hover:bg-rose-600">
+      Reject
+    </button>
+    {% endif %}
+  </div>
+</li>

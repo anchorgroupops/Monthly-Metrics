@@ -1,0 +1,19 @@
+{% extends "admin/_base.html" %}
+{% block title %}Sign in · Anchor Metrics{% endblock %}
+{% block content %}
+<div class="max-w-md mx-auto mt-12 bg-white rounded-xl shadow p-8">
+  <h1 class="text-xl font-bold brand-primary-text mb-2">Anchor Metrics Admin</h1>
+  <p class="text-sm text-slate-500 mb-6">Sign in to upload data, review drafts, and send the monthly digest.</p>
+  <form method="POST" action="{{ url_for('login') }}" class="space-y-4">
+    <label class="block">
+      <span class="text-sm font-medium text-slate-700">Password</span>
+      <input type="password" name="password" autofocus required
+             class="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-teal-500">
+    </label>
+    <button type="submit"
+            class="w-full brand-primary text-white font-semibold py-2.5 rounded-lg hover:opacity-90">
+      Sign in
+    </button>
+  </form>
+</div>
+{% endblock %}
