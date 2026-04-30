@@ -24,6 +24,7 @@
 {% if approved %}
 <form method="POST" action="{{ url_for('send') }}" class="mb-6"
       onsubmit="return confirm('Send {{ approved }} approved email(s) now?');">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
   <button type="submit"
           class="brand-secondary text-white font-semibold px-5 py-2.5 rounded-lg hover:opacity-90">
     Send {{ approved }} approved email{{ '' if approved == 1 else 's' }} now

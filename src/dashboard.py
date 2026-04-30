@@ -24,6 +24,7 @@ GET  /logout
 from __future__ import annotations
 
 import json
+import logging
 import os
 import secrets
 import smtplib
@@ -43,7 +44,11 @@ from flask import (
     session,
     url_for,
 )
+from flask_limiter import Limiter
+from flask_limiter.util import get_remote_address
+from flask_wtf.csrf import CSRFProtect
 from jinja2 import ChoiceLoader, FileSystemLoader
+from werkzeug.middleware.proxy_fix import ProxyFix
 
 from config.settings import (
     BRAND,
@@ -65,6 +70,10 @@ from src.metrics import (
     score_all_agents,
 )
 
+log = logging.getLogger(__name__)
+
+csrf = CSRFProtect()
+
 
 def create_app() -> Flask:
     app = Flask(
@@ -74,13 +83,39 @@ def create_app() -> Flask:
     )
     app.secret_key = os.environ.get("FLASK_SECRET_KEY") or secrets.token_hex(32)
     app.config["MAX_CONTENT_LENGTH"] = 5 * 1024 * 1024  # 5 MB upload cap
+    app.config["WTF_CSRF_TIME_LIMIT"] = None  # CSRF tokens valid as long as session
+
+    is_prod = os.environ.get("DEPLOYMENT_MODE", "development").lower() == "production"
+    if is_prod:
+        # Behind cloudflared (or any reverse proxy) — read real client IP/scheme.
+        app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1)
+        app.config.update(
+            SESSION_COOKIE_SECURE=True,
+            SESSION_COOKIE_HTTPONLY=True,
+            SESSION_COOKIE_SAMESITE="Lax",
+            PREFERRED_URL_SCHEME="https",
+        )
+        log.info("Dashboard starting in PRODUCTION mode (secure cookies, ProxyFix on).")
+    else:
+        log.info("Dashboard starting in DEVELOPMENT mode.")
+
+    csrf.init_app(app)
+
+    # Brute-force protection on /login (5 attempts / 15 min / IP).
+    limiter = Limiter(
+        get_remote_address,
+        app=app,
+        default_limits=[],
+        storage_uri="memory://",
+    )
+    app.extensions["limiter"] = limiter
 
     # Make BRAND available in every template.
     @app.context_processor
     def inject_brand():
         return {"brand": BRAND}
 
-    _register_routes(app)
+    _register_routes(app, limiter)
     return app
 
 
@@ -102,7 +137,7 @@ def _check_password(provided: str) -> bool:
 
 # ── Routes ────────────────────────────────────────────────────────────────────
 
-def _register_routes(app: Flask) -> None:
+def _register_routes(app: Flask, limiter: Limiter) -> None:
 
     @app.route("/")
     def root():
@@ -110,14 +145,30 @@ def _register_routes(app: Flask) -> None:
             return redirect(url_for("home"))
         return redirect(url_for("login"))
 
+    @app.route("/healthz")
+    @csrf.exempt
+    def healthz():
+        return "ok", 200
+
     @app.route("/login", methods=["GET", "POST"])
+    @limiter.limit("5 per 15 minutes", methods=["POST"])
     def login():
         if request.method == "POST":
             if _check_password(request.form.get("password", "")):
+                session.clear()
                 session["authed"] = True
+                session.permanent = True
                 return redirect(url_for("home"))
             flash("Incorrect password.", "error")
         return render_template("admin/login.html")
+
+    @app.errorhandler(429)
+    def too_many_requests(e):
+        return render_template(
+            "admin/login.html",
+            rate_limited=True,
+            retry_after=str(getattr(e, "description", "")),
+        ), 429
 
     @app.route("/logout")
     def logout():

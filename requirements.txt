@@ -12,6 +12,9 @@ anthropic>=0.40.0
 
 # Admin dashboard
 Flask>=3.0.0
+Flask-WTF>=1.2.0
+Flask-Limiter>=3.5.0
+gunicorn>=22.0.0
 
 # (Optional) Load env vars from a .env file during local development
 python-dotenv>=1.0.0

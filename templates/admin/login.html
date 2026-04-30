@@ -4,7 +4,13 @@
 <div class="max-w-md mx-auto mt-12 bg-white rounded-xl shadow p-8">
   <h1 class="text-xl font-bold brand-primary-text mb-2">Anchor Metrics Admin</h1>
   <p class="text-sm text-slate-500 mb-6">Sign in to upload data, review drafts, and send the monthly digest.</p>
+  {% if rate_limited %}
+  <div class="mb-4 px-4 py-3 rounded-lg text-sm bg-rose-100 text-rose-900 border border-rose-200">
+    Too many failed attempts. Try again in 15 minutes.
+  </div>
+  {% endif %}
   <form method="POST" action="{{ url_for('login') }}" class="space-y-4">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <label class="block">
       <span class="text-sm font-medium text-slate-700">Password</span>
       <input type="password" name="password" autofocus required

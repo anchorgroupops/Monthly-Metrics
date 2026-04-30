@@ -8,6 +8,7 @@
     <p class="text-sm text-slate-500">Approve or reject each agent's draft email before sending.</p>
   </div>
   <form method="POST" action="{{ url_for('approve_all', period=period) }}">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <button type="submit"
             class="brand-secondary text-white font-semibold px-4 py-2 rounded-lg text-sm hover:opacity-90"
             onclick="return confirm('Approve all pending drafts?');">

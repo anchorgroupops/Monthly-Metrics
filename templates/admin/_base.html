@@ -21,7 +21,8 @@
     .brand-secondary { background-color: {{ brand.color_secondary }}; }
   </style>
 </head>
-<body class="min-h-screen">
+<body class="min-h-screen"
+      hx-headers='{"X-CSRFToken": "{{ csrf_token() }}"}'>
 
 {% if session.authed %}
 <header class="brand-primary text-white">

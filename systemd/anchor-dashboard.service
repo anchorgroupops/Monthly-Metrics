@@ -1,0 +1,27 @@
+[Unit]
+Description=Anchor Group Monthly Metrics Dashboard (gunicorn)
+Documentation=https://github.com/anchorgroupops/Monthly-Metrics
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=/opt/Monthly-Metrics
+EnvironmentFile=/opt/Monthly-Metrics/.env
+Environment=DEPLOYMENT_MODE=production
+ExecStart=/opt/Monthly-Metrics/scripts/serve.sh
+Restart=on-failure
+RestartSec=5
+
+# User= is filled in by scripts/install_dashboard_service.sh at install time
+# so the service runs as the same UNIX user that owns the repo.
+
+# Hardening
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=read-only
+ReadWritePaths=/opt/Monthly-Metrics/data /opt/Monthly-Metrics/logs
+
+[Install]
+WantedBy=multi-user.target
