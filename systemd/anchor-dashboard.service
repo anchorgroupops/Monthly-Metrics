@@ -9,6 +9,8 @@ Type=simple
 WorkingDirectory=/opt/Monthly-Metrics
 EnvironmentFile=/opt/Monthly-Metrics/.env
 Environment=DEPLOYMENT_MODE=production
+Environment=PYTHONUNBUFFERED=1
+Environment=PYTHONDONTWRITEBYTECODE=1
 ExecStart=/opt/Monthly-Metrics/scripts/serve.sh
 Restart=on-failure
 RestartSec=5

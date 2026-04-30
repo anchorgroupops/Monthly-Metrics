@@ -103,8 +103,25 @@ The HEARTBEAT cron entry is unchanged — it still runs `scripts/heartbeat.sh` a
 
 ## 5. Troubleshooting
 
+**One-shot diagnostic (always start here)**
+```bash
+scripts/diagnose.sh
+```
+Prints a green/red checklist for every step from the dashboard service through Cloudflare DNS to end-to-end HTTPS. The first red line is your problem.
+
+**`ERR_NAME_NOT_RESOLVED` / "site can't be reached" in browser**
+DNS isn't pointing at the tunnel. The CNAME in Cloudflare was never created (or was deleted). Re-run:
+```bash
+scripts/install_tunnel.sh
+```
+The hardened script fails loudly now if the DNS step doesn't succeed — read the error it prints. Most common cause: the browser auth flow picked the wrong Cloudflare account or didn't authorize the `joelycannoli.com` zone. Fix:
+```bash
+rm ~/.cloudflared/cert.pem
+scripts/install_tunnel.sh   # re-do the browser flow, pick joelycannoli.com
+```
+
 **`502 Bad Gateway` from anchor.joelycannoli.com**
-The dashboard service isn't running. `sudo systemctl status anchor-dashboard`.
+DNS works, tunnel works, but the dashboard service isn't running. `sudo systemctl status anchor-dashboard`.
 
 **`530` from anchor.joelycannoli.com**
 Cloudflare can't reach the tunnel. `sudo systemctl status cloudflared`. If down, `sudo systemctl restart cloudflared`.
@@ -120,9 +137,6 @@ Both services have `Restart=on-failure` and are `enabled` — they should come b
 ```bash
 sudo systemctl start anchor-dashboard cloudflared
 ```
-
-**DNS record not appearing in Cloudflare**
-`cloudflared tunnel route dns` requires the tunnel auth token. Re-run `cloudflared tunnel login` if it failed silently the first time.
 
 ## 6. Security notes
 

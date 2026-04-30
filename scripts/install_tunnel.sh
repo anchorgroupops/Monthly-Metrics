@@ -10,6 +10,7 @@
 #   - You can briefly open a URL in a browser to authorize the tunnel.
 #
 # Idempotent: safe to re-run. Skips steps that are already complete.
+# Fails loudly on any unexpected error — does NOT mask DNS or auth failures.
 
 set -euo pipefail
 
@@ -17,7 +18,8 @@ TUNNEL_NAME="${TUNNEL_NAME:-anchor}"
 HOSTNAME="${HOSTNAME_FQDN:-anchor.joelycannoli.com}"
 LOCAL_SERVICE="${LOCAL_SERVICE:-http://127.0.0.1:5000}"
 
-log() { printf "\n[tunnel] %s\n" "$*"; }
+log()  { printf "\n[tunnel] %s\n" "$*"; }
+fail() { printf "\n[tunnel] ERROR: %s\n" "$*" >&2; exit 1; }
 
 # 1. Install cloudflared --------------------------------------------------------
 if ! command -v cloudflared >/dev/null 2>&1; then
@@ -40,23 +42,31 @@ if [ ! -f "$HOME/.cloudflared/cert.pem" ]; then
   echo "  authorize the joelycannoli.com zone. Then come back here."
   echo
   cloudflared tunnel login
+  [ -f "$HOME/.cloudflared/cert.pem" ] || \
+    fail "cert.pem not found at $HOME/.cloudflared/cert.pem after login.
+       The browser flow probably didn't complete. Re-run this script."
 fi
 
-# 3. Create the tunnel ----------------------------------------------------------
-TUNNEL_UUID="$(cloudflared tunnel list 2>/dev/null | awk -v n="$TUNNEL_NAME" '$2 == n {print $1}')"
+# 3. Find or create the tunnel -------------------------------------------------
+# Use --output json for reliable parsing (works on cloudflared >= 2022.x).
+tunnel_uuid_for() {
+  local name="$1"
+  cloudflared tunnel list --output json 2>/dev/null \
+    | python3 -c "import json,sys;d=json.load(sys.stdin);print(next((t['id'] for t in d if t.get('name')==sys.argv[1]),''))" "$name"
+}
+
+TUNNEL_UUID="$(tunnel_uuid_for "$TUNNEL_NAME")"
 if [ -z "$TUNNEL_UUID" ]; then
   log "Creating tunnel '$TUNNEL_NAME'…"
   cloudflared tunnel create "$TUNNEL_NAME"
-  TUNNEL_UUID="$(cloudflared tunnel list | awk -v n="$TUNNEL_NAME" '$2 == n {print $1}')"
+  TUNNEL_UUID="$(tunnel_uuid_for "$TUNNEL_NAME")"
+  [ -n "$TUNNEL_UUID" ] || fail "Tunnel '$TUNNEL_NAME' created but UUID lookup failed."
 else
   log "Tunnel '$TUNNEL_NAME' already exists ($TUNNEL_UUID)."
 fi
 
 CRED_FILE="$HOME/.cloudflared/$TUNNEL_UUID.json"
-if [ ! -f "$CRED_FILE" ]; then
-  echo "ERROR: credentials file not found at $CRED_FILE" >&2
-  exit 1
-fi
+[ -f "$CRED_FILE" ] || fail "credentials file not found at $CRED_FILE"
 
 # 4. Write the tunnel config ----------------------------------------------------
 CONFIG="$HOME/.cloudflared/config.yml"
@@ -71,27 +81,65 @@ ingress:
   - service: http_status:404
 EOF
 
-# 5. DNS routing (creates the CNAME automatically via the CF API) --------------
+# 5. DNS routing — fail LOUDLY if this doesn't work ----------------------------
 log "Routing $HOSTNAME → tunnel '$TUNNEL_NAME'…"
-cloudflared tunnel route dns "$TUNNEL_NAME" "$HOSTNAME" || \
-  log "DNS route may already exist; continuing."
+if ! ROUTE_OUT="$(cloudflared tunnel route dns "$TUNNEL_NAME" "$HOSTNAME" 2>&1)"; then
+  # Re-running on an existing route returns a specific error — that's OK.
+  if echo "$ROUTE_OUT" | grep -qiE "already exists|already in use|record .* already configured"; then
+    log "DNS route already exists for $HOSTNAME — continuing."
+  else
+    echo "$ROUTE_OUT" >&2
+    fail "Failed to create DNS route for $HOSTNAME.
+       Common causes:
+         • cert.pem doesn't have access to the joelycannoli.com zone
+           → delete ~/.cloudflared/cert.pem and re-run; pick the right zone in the browser
+         • a conflicting DNS record for $HOSTNAME exists in Cloudflare
+           → remove it from the Cloudflare dashboard, then re-run
+         • outbound 443 to Cloudflare is blocked"
+  fi
+else
+  echo "$ROUTE_OUT"
+fi
 
 # 6. Install as a systemd service ----------------------------------------------
-if ! systemctl list-unit-files --no-legend | grep -q "^cloudflared.service"; then
+if ! systemctl list-unit-files --no-legend 2>/dev/null | grep -q "^cloudflared.service"; then
   log "Installing cloudflared as a systemd service…"
   sudo cloudflared --config "$CONFIG" service install
 fi
 
 sudo systemctl enable --now cloudflared
-sleep 2
-sudo systemctl status cloudflared --no-pager --lines=5 || true
+sleep 3
+sudo systemctl status cloudflared --no-pager --lines=8 || true
 
-# 7. Done ----------------------------------------------------------------------
+# 7. Verify the tunnel is actually up ------------------------------------------
+log "Verifying tunnel state…"
+TUNNEL_INFO="$(cloudflared tunnel info --output json "$TUNNEL_NAME" 2>/dev/null || echo '{}')"
+CONN_COUNT="$(echo "$TUNNEL_INFO" | python3 -c "import json,sys;d=json.load(sys.stdin);print(len(d.get('conns',[])))" 2>/dev/null || echo 0)"
+
+if [ "$CONN_COUNT" = "0" ]; then
+  log "⚠ Tunnel has 0 active connections to Cloudflare yet."
+  log "  Wait 10–30 seconds and run: cloudflared tunnel info $TUNNEL_NAME"
+else
+  log "✓ Tunnel has $CONN_COUNT active connection(s) to Cloudflare."
+fi
+
+# 8. Verify DNS resolves -------------------------------------------------------
+log "Verifying DNS for $HOSTNAME…"
+if getent hosts "$HOSTNAME" >/dev/null 2>&1; then
+  log "✓ DNS resolves: $(getent hosts "$HOSTNAME" | head -1)"
+else
+  log "⚠ DNS for $HOSTNAME does not resolve yet from this Pi."
+  log "  Cloudflare-proxied records usually appear within a few seconds."
+  log "  If still failing after 1 minute, check the Cloudflare DNS dashboard for $HOSTNAME."
+fi
+
+# 9. Done ----------------------------------------------------------------------
 log "✓ Tunnel install complete."
 echo
-echo "  Hostname: https://$HOSTNAME"
-echo "  Tunnel:   $TUNNEL_NAME ($TUNNEL_UUID)"
+echo "  Hostname:    https://$HOSTNAME"
+echo "  Tunnel:      $TUNNEL_NAME ($TUNNEL_UUID)"
 echo "  Forwards to: $LOCAL_SERVICE"
 echo
-echo "  Test:  curl -I https://$HOSTNAME/healthz"
-echo "  Logs:  sudo journalctl -u cloudflared -f"
+echo "  Test:      curl -I https://$HOSTNAME/healthz"
+echo "  Logs:      sudo journalctl -u cloudflared -f"
+echo "  Diagnose:  scripts/diagnose.sh"
