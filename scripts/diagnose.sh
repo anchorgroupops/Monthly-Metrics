@@ -62,7 +62,16 @@ if curl -fsS -m 3 -o /dev/null "http://$LOCAL_BIND/healthz" 2>/dev/null; then
   ok "http://$LOCAL_BIND/healthz returns 200"
 else
   bad "http://$LOCAL_BIND/healthz unreachable"
-  echo "    → sudo journalctl -u anchor-dashboard -n 30"
+  # If the service is active but healthz still fails, gunicorn started but
+  # workers are crashing (import error / bind failure / etc.) — tail the
+  # journal so the actual stack trace is right here.
+  if systemctl is-active --quiet anchor-dashboard 2>/dev/null; then
+    echo "    service is up but not responding — recent journal lines:"
+    sudo journalctl -u anchor-dashboard -n 25 --no-pager 2>/dev/null \
+      | sed 's/^/      /'
+  else
+    echo "    → sudo journalctl -u anchor-dashboard -n 30"
+  fi
 fi
 
 # ── 3. cloudflared ───────────────────────────────────────────────────────────
