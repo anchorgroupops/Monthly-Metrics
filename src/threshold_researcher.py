@@ -11,6 +11,7 @@ even as Zillow updates its program requirements.
 import json
 import logging
 from datetime import date
+from typing import Optional
 
 import anthropic
 
