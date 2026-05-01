@@ -24,7 +24,9 @@ if [ ! -x "$REPO_DIR/.venv/bin/gunicorn" ]; then
   bash "$REPO_DIR/scripts/install.sh"
 fi
 
-chmod +x "$REPO_DIR/scripts/serve.sh"
+# serve.sh is committed with the executable bit set; no chmod needed at
+# install time, and chmod-ing /opt at runtime would fail under the unit's
+# ProtectSystem=strict sandbox anyway.
 
 log "Installing $UNIT_DST (running as user '$RUN_USER')"
 sudo install -m 0644 "$UNIT_SRC" "$UNIT_DST"

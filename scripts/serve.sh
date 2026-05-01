@@ -2,6 +2,11 @@
 # Production launcher for the Anchor Monthly Metrics dashboard.
 # Starts gunicorn bound to localhost — Cloudflare Tunnel terminates TLS
 # and forwards traffic to 127.0.0.1:5000.
+#
+# Env vars are loaded by the systemd unit's EnvironmentFile=. We deliberately
+# do NOT `source .env` here — bash would interpret any $(…), backticks, or
+# unquoted whitespace in .env as commands, which has caused crash loops in
+# practice. systemd's parser is stricter and safer.
 
 set -euo pipefail
 
@@ -9,16 +14,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_DIR="$(dirname "$SCRIPT_DIR")"
 cd "$REPO_DIR"
 
-# Load .env if it exists (Pi-friendly: keeps secrets out of systemd units).
-if [ -f .env ]; then
-  set -a
-  # shellcheck disable=SC1091
-  . .env
-  set +a
-fi
-
 export DEPLOYMENT_MODE="${DEPLOYMENT_MODE:-production}"
-PYTHON="${PYTHON:-$REPO_DIR/.venv/bin/python}"
 GUNICORN="$REPO_DIR/.venv/bin/gunicorn"
 
 if [ ! -x "$GUNICORN" ]; then
