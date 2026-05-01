@@ -1,0 +1,17 @@
+[Unit]
+Description=Schedule Anchor monthly metrics pipeline (1st of month, 09:00 local)
+Documentation=https://github.com/anchorgroupops/Monthly-Metrics
+
+[Timer]
+# 09:00 local on the 1st of every month. Loose timing is fine — the data is
+# for the prior calendar month and FUB systems need a beat to settle.
+OnCalendar=*-*-01 09:00:00
+# If the Pi was powered off at 09:00, run as soon as the timer is active again.
+# Without this, cron-style schedules silently miss boots.
+Persistent=true
+# 5-minute jitter to avoid stampede if anyone ever runs this on multiple Pis.
+RandomizedDelaySec=5min
+Unit=anchor-monthly.service
+
+[Install]
+WantedBy=timers.target

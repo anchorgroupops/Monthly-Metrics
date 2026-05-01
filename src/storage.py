@@ -115,13 +115,23 @@ def normalize_period(period: str) -> str:
 
 # ── Saving ingested data ──────────────────────────────────────────────────────
 
-def save_period(agents: list[dict], source: str, file_path: Optional[str] = None) -> int:
+def save_period(
+    agents: list[dict],
+    source: str,
+    file_path: Optional[str] = None,
+    run_id: Optional[int] = None,
+) -> int:
     """
     Persist a list of normalized agent records to SQLite.
 
     Each agent dict should contain agent_id, name, email, period, plus one key
     per metric defined in thresholds.json. Extra keys are ignored. Inserts are
     upserts on (agent_id, period, metric_key).
+
+    If ``run_id`` is provided, that existing row is updated to status='ok' with
+    the final row_count. Otherwise a new run row is inserted. The two-call
+    pattern lets the dashboard's manual-pull flow track an in-progress job
+    before the save_period payload exists.
 
     Returns the run id.
     """
@@ -135,14 +145,24 @@ def save_period(agents: list[dict], source: str, file_path: Optional[str] = None
     with connect() as conn:
         cur = conn.cursor()
 
-        cur.execute(
-            """
-            INSERT INTO runs (period, source, file_path, row_count, status)
-            VALUES (?, ?, ?, ?, 'ok')
-            """,
-            (period, source, file_path, len(agents)),
-        )
-        run_id = cur.lastrowid
+        if run_id is None:
+            cur.execute(
+                """
+                INSERT INTO runs (period, source, file_path, row_count, status)
+                VALUES (?, ?, ?, ?, 'ok')
+                """,
+                (period, source, file_path, len(agents)),
+            )
+            run_id = cur.lastrowid
+        else:
+            cur.execute(
+                """
+                UPDATE runs
+                SET period = ?, row_count = ?, status = 'ok'
+                WHERE id = ?
+                """,
+                (period, len(agents), run_id),
+            )
 
         for agent in agents:
             cur.execute(
@@ -182,6 +202,63 @@ def save_period(agents: list[dict], source: str, file_path: Optional[str] = None
 
         log.info("Saved %d agents for period %s (run #%d)", len(agents), period, run_id)
         return run_id
+
+
+# ── Run lifecycle (manual-pull / cron tracking) ───────────────────────────────
+
+def start_run(source: str, period: Optional[str] = None) -> int:
+    """
+    Create a runs row with status='running'. Returns its id. Use for the
+    manual-pull background thread and the cron pipeline so the dashboard can
+    show "in progress" state while an actual save_period() hasn't happened yet.
+    """
+    with connect() as conn:
+        cur = conn.execute(
+            """
+            INSERT INTO runs (period, source, status, row_count)
+            VALUES (?, ?, 'running', 0)
+            """,
+            (period or "", source),
+        )
+        return cur.lastrowid
+
+
+def finish_run(run_id: int, status: str, notes: Optional[str] = None) -> None:
+    """
+    Terminal update for a run row. ``status`` is 'ok' or 'error'. If
+    save_period() was called with run_id, it has already moved the row to 'ok'
+    — calling finish_run('ok') again is harmless. For failures, call this
+    instead of save_period() so the running state clears.
+    """
+    if status not in ("ok", "error"):
+        raise ValueError(f"finish_run: invalid status {status!r}")
+    with connect() as conn:
+        conn.execute(
+            "UPDATE runs SET status = ?, notes = ? WHERE id = ?",
+            (status, notes, run_id),
+        )
+
+
+def get_active_run() -> Optional[dict]:
+    """Return the currently-running run row, or None. Newest wins on ties."""
+    with connect() as conn:
+        row = conn.execute(
+            "SELECT * FROM runs WHERE status = 'running' ORDER BY id DESC LIMIT 1"
+        ).fetchone()
+    return dict(row) if row else None
+
+
+def latest_run(source: Optional[str] = None) -> Optional[dict]:
+    """Return the most recent run, optionally filtered by source ('fub' etc)."""
+    sql = "SELECT * FROM runs"
+    params: list = []
+    if source:
+        sql += " WHERE source = ?"
+        params.append(source)
+    sql += " ORDER BY id DESC LIMIT 1"
+    with connect() as conn:
+        row = conn.execute(sql, params).fetchone()
+    return dict(row) if row else None
 
 
 # ── Reading history ───────────────────────────────────────────────────────────
@@ -377,6 +454,10 @@ __all__ = [
     "normalize_period",
     "period_label",
     "save_period",
+    "start_run",
+    "finish_run",
+    "get_active_run",
+    "latest_run",
     "load_period",
     "load_history",
     "team_history",

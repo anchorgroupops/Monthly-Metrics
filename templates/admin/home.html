@@ -14,11 +14,26 @@
       Review drafts ({{ pending }} pending, {{ approved }} approved)
     </a>
     {% endif %}
+    <form method="POST" action="{{ url_for('pull_now') }}" class="inline">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <button type="submit"
+              class="brand-primary text-white font-medium px-4 py-2 rounded-lg text-sm hover:opacity-90">
+        Pull from FUB
+      </button>
+    </form>
     <a href="{{ url_for('upload') }}"
        class="bg-white border border-slate-300 px-4 py-2 rounded-lg text-sm hover:bg-slate-50">
       + Upload month
     </a>
   </div>
+</section>
+
+<section class="mb-6">
+  {# Self-loading status card. First render is empty; HTMX swaps in /pull-status
+     immediately, and that partial keeps polling itself. #}
+  <div hx-get="{{ url_for('pull_status') }}"
+       hx-trigger="load"
+       hx-swap="outerHTML"></div>
 </section>
 
 {% if approved %}

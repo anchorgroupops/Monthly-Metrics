@@ -4,6 +4,7 @@ Anchor Group Monthly Metrics — CLI Entry Point
 
 Usage:
   python main.py --mode research                       # Refresh KPIs + thresholds
+  python main.py --mode pull                           # Fetch FUB metrics → SQLite
   python main.py --mode upload <file.csv|file.json>    # Ingest admin upload
   python main.py --mode review                         # Generate output locally
   python main.py --mode review --mock                  # Review with mock data
@@ -49,6 +50,50 @@ def cmd_research(args) -> int:
     print("\n── Researching Zillow Preferred KPIs… ──")
     run_research()
     return 0
+
+
+# ── Mode: pull ────────────────────────────────────────────────────────────────
+
+def cmd_pull(args) -> int:
+    """
+    Fetch the prior-month metrics from FUB and persist to SQLite. Idempotent:
+    re-running for the same period upserts on (agent_id, period, metric_key).
+    Used by the cron pipeline and the dashboard's manual-pull button.
+    """
+    from src.fub_client import fetch_all_agents
+    from src.storage import finish_run, save_period, start_run
+    from config.settings import AGENTS, FUB_API_KEY
+
+    print("\n── Pull Mode ────────────────────────────────────────────────────────")
+
+    if not AGENTS:
+        print("  No agents configured in config/settings.py — nothing to pull.")
+        return 0
+
+    if not FUB_API_KEY:
+        print(
+            "  ERROR: FUB_API_KEY environment variable not set.\n"
+            "  Set it in /opt/Monthly-Metrics/.env (production) or your shell."
+        )
+        return 1
+
+    run_id = start_run(source="fub")
+    try:
+        agents = fetch_all_agents()
+        if not agents:
+            finish_run(run_id, "ok", "no agents returned")
+            print("  FUB returned 0 agents — nothing to save.")
+            return 0
+        save_period(agents, source="fub", run_id=run_id)
+        print(f"  Pulled {len(agents)} agent record(s) from FUB.")
+        print(f"  Next: python main.py --mode draft\n")
+        return 0
+    except Exception as exc:
+        finish_run(run_id, "error", str(exc))
+        log = logging.getLogger(__name__)
+        log.exception("FUB pull failed")
+        print(f"  ERROR: {exc}")
+        return 1
 
 
 # ── Mode: upload ──────────────────────────────────────────────────────────────
@@ -283,7 +328,7 @@ def main() -> int:
     )
     parser.add_argument(
         "--mode",
-        choices=["research", "upload", "review", "draft", "dashboard", "send"],
+        choices=["research", "pull", "upload", "review", "draft", "dashboard", "send"],
         help="Execution mode",
     )
     parser.add_argument(
@@ -334,6 +379,8 @@ def main() -> int:
 
     if args.mode == "research":
         return cmd_research(args)
+    if args.mode == "pull":
+        return cmd_pull(args)
     if args.mode == "upload":
         return cmd_upload(args)
     if args.mode == "review":

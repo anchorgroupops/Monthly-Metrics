@@ -28,6 +28,8 @@ import logging
 import os
 import secrets
 import smtplib
+import threading
+from datetime import datetime, timedelta
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 from functools import wraps
@@ -115,8 +117,91 @@ def create_app() -> Flask:
     def inject_brand():
         return {"brand": BRAND}
 
+    # Clean up runs left in 'running' from a prior worker that died — otherwise
+    # the manual-pull button would stay disabled forever after a gunicorn crash.
+    _reap_stale_runs()
+
     _register_routes(app, limiter)
     return app
+
+
+# ── Manual-pull background pipeline ───────────────────────────────────────────
+
+# Stale threshold: a run still in 'running' after this is treated as crashed.
+_STALE_RUN_MINUTES = 30
+
+
+def _reap_stale_runs() -> None:
+    active = storage.get_active_run()
+    if not active:
+        return
+    try:
+        started = datetime.fromisoformat(active["created_at"])
+    except (KeyError, TypeError, ValueError):
+        return
+    if datetime.utcnow() - started > timedelta(minutes=_STALE_RUN_MINUTES):
+        log.warning("Reaping stale run #%d (started %s)", active["id"], active["created_at"])
+        storage.finish_run(active["id"], "error", "stale — reaped at app startup")
+
+
+def _pull_pipeline_worker(run_id: int) -> None:
+    """
+    Run the full monthly pipeline in a background thread:
+      1. Fetch metrics from FUB → save_period (uses pre-allocated run_id)
+      2. Refresh KPI thresholds (non-fatal — warn-only)
+      3. Build draft emails for the period that just landed
+
+    Errors at step 1 or 3 mark the run 'error' and trigger an admin alert.
+    Step 2 is best-effort.
+    """
+    try:
+        from src.fub_client import fetch_all_agents
+
+        agents = fetch_all_agents()
+        if not agents:
+            storage.finish_run(run_id, "ok", "FUB returned 0 agents")
+            return
+
+        storage.save_period(agents, source="fub", run_id=run_id)
+        period = storage.normalize_period(agents[0]["period"])
+
+        # Step 2: research is non-fatal — keep yesterday's thresholds if it fails.
+        try:
+            from src.threshold_researcher import run_research
+            run_research()
+        except Exception as exc:
+            log.warning("Threshold research failed (continuing): %s", exc)
+
+        # Step 3: queue drafts for the period we just pulled.
+        from src.email_builder import build_email
+        from src.metrics import score_all_agents
+
+        scored = score_all_agents(storage.load_period(period))
+        for agent in scored:
+            html = build_email(agent)
+            storage.queue_draft(agent["agent_id"], agent["period"], html)
+
+        storage.finish_run(
+            run_id, "ok",
+            f"pulled {len(agents)}, queued {len(scored)} drafts for {period}",
+        )
+        log.info("Manual pull complete: run #%d", run_id)
+    except Exception as exc:
+        log.exception("Manual-pull pipeline failed")
+        try:
+            storage.finish_run(run_id, "error", str(exc)[:500])
+        except Exception:
+            pass
+        try:
+            from src.notifier import notify_admin_failure
+            notify_admin_failure(
+                "Anchor Group: manual pull failed",
+                f"Run #{run_id} failed during the manual-pull pipeline.\n\n"
+                f"Error: {exc}\n\n"
+                f"Check journalctl -u anchor-dashboard for the traceback.",
+            )
+        except Exception:
+            pass
 
 
 # ── Auth ──────────────────────────────────────────────────────────────────────
@@ -261,6 +346,40 @@ def _register_routes(app: Flask, limiter: Limiter) -> None:
         return render_template(
             "admin/upload.html",
             metric_keys=metric_keys(load_thresholds()),
+        )
+
+    @app.route("/pull-now", methods=["POST"])
+    @login_required
+    def pull_now():
+        from config.settings import AGENTS, FUB_API_KEY
+
+        if not AGENTS:
+            flash("No agents configured in config/settings.py — nothing to pull.", "error")
+            return redirect(url_for("home"))
+        if not FUB_API_KEY:
+            flash("FUB_API_KEY is not set in the deployment environment.", "error")
+            return redirect(url_for("home"))
+        if storage.get_active_run():
+            flash("A pull is already in progress.", "error")
+            return redirect(url_for("home"))
+
+        run_id = storage.start_run(source="fub")
+        threading.Thread(
+            target=_pull_pipeline_worker,
+            args=(run_id,),
+            daemon=True,
+            name=f"pull-{run_id}",
+        ).start()
+        flash("FUB pull started — drafts will appear when it finishes.", "success")
+        return redirect(url_for("home"))
+
+    @app.route("/pull-status")
+    @login_required
+    def pull_status():
+        return render_template(
+            "admin/_pull_status.html",
+            active=storage.get_active_run(),
+            latest=storage.latest_run(source="fub"),
         )
 
     @app.route("/review/<period>")

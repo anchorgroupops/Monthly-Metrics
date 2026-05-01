@@ -1,0 +1,48 @@
+{# Status card for the manual-pull pipeline. Polled by HTMX every 4 seconds. #}
+{% if active %}
+  <div class="flex items-center gap-3 px-4 py-3 rounded-lg bg-amber-50 border border-amber-200 text-sm"
+       hx-get="{{ url_for('pull_status') }}"
+       hx-trigger="every 4s"
+       hx-swap="outerHTML">
+    <span class="inline-block w-2.5 h-2.5 rounded-full bg-amber-500 animate-pulse"></span>
+    <div>
+      <div class="font-medium text-amber-900">Pulling from FUB…</div>
+      <div class="text-xs text-amber-700">Run #{{ active.id }} · started {{ active.created_at }} UTC</div>
+    </div>
+  </div>
+{% elif latest %}
+  <div class="flex items-center gap-3 px-4 py-3 rounded-lg
+              {% if latest.status == 'ok' %}bg-emerald-50 border border-emerald-200 text-emerald-900
+              {% else %}bg-rose-50 border border-rose-200 text-rose-900{% endif %}
+              text-sm"
+       hx-get="{{ url_for('pull_status') }}"
+       hx-trigger="every 30s"
+       hx-swap="outerHTML">
+    {% if latest.status == 'ok' %}
+      <span class="inline-block w-2.5 h-2.5 rounded-full bg-emerald-500"></span>
+      <div>
+        <div class="font-medium">Last FUB pull: success</div>
+        <div class="text-xs opacity-80">
+          {{ latest.created_at }} UTC · {{ latest.row_count }} agent{{ '' if latest.row_count == 1 else 's' }}
+          {% if latest.notes %}· {{ latest.notes }}{% endif %}
+        </div>
+      </div>
+    {% else %}
+      <span class="inline-block w-2.5 h-2.5 rounded-full bg-rose-500"></span>
+      <div>
+        <div class="font-medium">Last FUB pull: failed</div>
+        <div class="text-xs opacity-80">
+          {{ latest.created_at }} UTC
+          {% if latest.notes %}· {{ latest.notes }}{% endif %}
+        </div>
+      </div>
+    {% endif %}
+  </div>
+{% else %}
+  <div class="px-4 py-3 rounded-lg bg-slate-50 border border-slate-200 text-sm text-slate-600"
+       hx-get="{{ url_for('pull_status') }}"
+       hx-trigger="every 30s"
+       hx-swap="outerHTML">
+    No FUB pull recorded yet.
+  </div>
+{% endif %}

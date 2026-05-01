@@ -34,6 +34,8 @@ SMTP_PASSWORD = os.environ.get("SMTP_PASSWORD", "")
 EMAIL_FROM_NAME = "The Anchor Group"
 EMAIL_FROM_ADDRESS = os.environ.get("EMAIL_FROM", SMTP_USER)
 EMAIL_SUBJECT_TEMPLATE = "Your {month} Performance Report — The Anchor Group"
+# Where failure alerts go. Falls back to the from-address if unset.
+ADMIN_EMAIL = os.environ.get("ADMIN_EMAIL", EMAIL_FROM_ADDRESS)
 
 # ── Agent Roster ──────────────────────────────────────────────────────────────
 # Each entry: fub_agent_id must match the ID in Follow Up Boss.

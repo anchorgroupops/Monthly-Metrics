@@ -1,0 +1,31 @@
+[Unit]
+Description=Anchor Group Monthly Metrics — FUB pull + research + draft pipeline
+Documentation=https://github.com/anchorgroupops/Monthly-Metrics
+After=network-online.target
+Wants=network-online.target
+# Don't try if the dashboard service is failing — the dashboard is what surfaces
+# the resulting drafts, and a failing one means logs/disk/.env are likely broken.
+After=anchor-dashboard.service
+
+[Service]
+Type=oneshot
+WorkingDirectory=/opt/Monthly-Metrics
+EnvironmentFile=/opt/Monthly-Metrics/.env
+Environment=PYTHONUNBUFFERED=1
+Environment=PYTHONDONTWRITEBYTECODE=1
+ExecStart=/opt/Monthly-Metrics/scripts/heartbeat.sh
+StandardOutput=journal
+StandardError=journal
+
+# User= is filled in by scripts/install_monthly_timer.sh at install time so the
+# pipeline runs as the same UNIX user that owns the repo and the SQLite db.
+
+# Hardening — same posture as anchor-dashboard.service.
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=read-only
+ReadWritePaths=/opt/Monthly-Metrics/data /opt/Monthly-Metrics/logs /opt/Monthly-Metrics/output
+
+[Install]
+WantedBy=multi-user.target
