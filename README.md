@@ -38,7 +38,7 @@ python main.py --mode draft
 
 # 6. Review + approve via the dashboard
 python main.py --mode dashboard
-# → http://127.0.0.1:5000
+# → http://127.0.0.1:5050
 ```
 
 ## Modes
@@ -49,7 +49,7 @@ python main.py --mode dashboard
 | `upload`    | Parses a CSV/JSON file into `data/metrics.db`. Required.               |
 | `review`    | Renders all agent emails + team deck to `output/review/` for local preview. |
 | `draft`     | Like `review`, but persists drafts to the approval queue (no files written). |
-| `dashboard` | Starts the Flask admin UI on `:5000`.                                  |
+| `dashboard` | Starts the Flask admin UI on `:5050`.                                  |
 | `send`      | SMTP-sends every draft currently in `status='approved'`.               |
 
 Use `--source fub` to override the default and pull live from Follow Up Boss.

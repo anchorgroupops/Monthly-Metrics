@@ -13,7 +13,7 @@ internet  →  Cloudflare edge (TLS terminates here)
               ↓
           Cloudflare Tunnel (cloudflared service on the Pi, outbound only)
               ↓
-          gunicorn @ 127.0.0.1:5000  (anchor-dashboard.service)
+          gunicorn @ 127.0.0.1:5050  (anchor-dashboard.service)
               ↓
           Flask + SQLite at /opt/Monthly-Metrics/data/metrics.db
 ```
@@ -31,7 +31,7 @@ This creates and starts `anchor-dashboard.service`. Verify:
 
 ```bash
 sudo systemctl status anchor-dashboard
-curl -I http://127.0.0.1:5000/healthz   # expect HTTP/1.1 200 OK
+curl -I http://127.0.0.1:5050/healthz   # expect HTTP/1.1 200 OK
 ```
 
 ## 2. Install the Cloudflare Tunnel
@@ -53,7 +53,7 @@ https://dash.cloudflare.com/argotunnel?...
 The script then:
 
 1. Creates a tunnel named `anchor`.
-2. Writes `~/.cloudflared/config.yml` mapping `anchor.joelycannoli.com → http://127.0.0.1:5000`.
+2. Writes `~/.cloudflared/config.yml` mapping `anchor.joelycannoli.com → http://127.0.0.1:5050`.
 3. Creates a CNAME via the Cloudflare API.
 4. Installs `cloudflared` as a systemd service and starts it.
 

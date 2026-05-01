@@ -16,7 +16,7 @@ set -euo pipefail
 
 TUNNEL_NAME="${TUNNEL_NAME:-anchor}"
 HOSTNAME="${HOSTNAME_FQDN:-anchor.joelycannoli.com}"
-LOCAL_SERVICE="${LOCAL_SERVICE:-http://127.0.0.1:5000}"
+LOCAL_SERVICE="${LOCAL_SERVICE:-http://127.0.0.1:5050}"
 
 log()  { printf "\n[tunnel] %s\n" "$*"; }
 fail() { printf "\n[tunnel] ERROR: %s\n" "$*" >&2; exit 1; }

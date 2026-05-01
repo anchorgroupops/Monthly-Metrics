@@ -11,7 +11,7 @@ set -u  # don't `set -e` — we want every check to run even if one fails
 
 HOSTNAME="${HOSTNAME_FQDN:-anchor.joelycannoli.com}"
 TUNNEL_NAME="${TUNNEL_NAME:-anchor}"
-LOCAL_BIND="${LOCAL_BIND:-127.0.0.1:5000}"
+LOCAL_BIND="${LOCAL_BIND:-127.0.0.1:5050}"
 
 PASS="\033[32m✓\033[0m"
 WARN="\033[33m⚠\033[0m"

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Production launcher for the Anchor Monthly Metrics dashboard.
 # Starts gunicorn bound to localhost — Cloudflare Tunnel terminates TLS
-# and forwards traffic to 127.0.0.1:5000.
+# and forwards traffic to 127.0.0.1:5050.
 #
 # Env vars are loaded by the systemd unit's EnvironmentFile=. We deliberately
 # do NOT `source .env` here — bash would interpret any $(…), backticks, or
@@ -25,7 +25,7 @@ fi
 # 2 workers × 4 threads is comfortable on a Pi 4. Tune via env.
 WORKERS="${GUNICORN_WORKERS:-2}"
 THREADS="${GUNICORN_THREADS:-4}"
-BIND="${GUNICORN_BIND:-127.0.0.1:5000}"
+BIND="${GUNICORN_BIND:-127.0.0.1:5050}"
 
 exec "$GUNICORN" \
   --workers "$WORKERS" \

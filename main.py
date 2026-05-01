@@ -141,10 +141,10 @@ def cmd_dashboard(args) -> int:
     from src.dashboard import create_app
 
     print("\n── Dashboard ────────────────────────────────────────────────────────")
-    print("  Starting Flask on http://127.0.0.1:5000")
+    print("  Starting Flask on http://127.0.0.1:5050")
     print("  Set ADMIN_PASSWORD env var to enable login (default: 'anchor').\n")
     app = create_app()
-    app.run(host="127.0.0.1", port=5000, debug=args.verbose)
+    app.run(host="127.0.0.1", port=5050, debug=args.verbose)
     return 0
 
 

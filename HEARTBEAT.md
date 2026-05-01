@@ -29,16 +29,16 @@ tail logs/heartbeat-$(date +%Y%m%d).log
 
 ### Reaching the dashboard
 
-By default the dashboard binds to `127.0.0.1:5000`. Two ways to reach it:
+By default the dashboard binds to `127.0.0.1:5050`. Two ways to reach it:
 
 - **Public URL via Cloudflare Tunnel (recommended)** — see [PUBLISH.md](./PUBLISH.md). Gets you `https://anchor.joelycannoli.com` with no port-forwarding.
 - **SSH port forwarding (dev only)**:
   ```bash
   # from your laptop, NOT the Pi:
-  ssh -L 5000:127.0.0.1:5000 pi@your-pi-host
+  ssh -L 5050:127.0.0.1:5050 pi@your-pi-host
   # then on the Pi:
   .venv/bin/python main.py --mode dashboard
-  # open http://127.0.0.1:5000 in your laptop browser
+  # open http://127.0.0.1:5050 in your laptop browser
   ```
 
 ## Pipeline
