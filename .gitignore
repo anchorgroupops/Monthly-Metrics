@@ -15,6 +15,12 @@ venv/
 dist/
 build/
 
+# Coverage
+.coverage
+.coverage.*
+htmlcov/
+coverage.xml
+
 # OS
 .DS_Store
 Thumbs.db
