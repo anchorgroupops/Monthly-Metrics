@@ -139,6 +139,23 @@ class TestOverallStatus:
         ]
         assert overall_status(metrics_list) == "Needs Improvement"
 
+    def test_zero_total_weight_falls_back_to_zero_score(self):
+        # If every metric has weight 0, division falls back to 0 → "Needs Improvement".
+        metrics_list = [
+            self._scored(2.0, weight=0.0),
+            self._scored(2.0, weight=0.0),
+        ]
+        assert overall_status(metrics_list) == "Needs Improvement"
+
+    def test_overshoot_above_target_still_preferred(self):
+        metrics_list = [self._scored(2.0, weight=1.0), self._scored(2.0, weight=1.0)]
+        assert overall_status(metrics_list) == "Preferred"
+
+    def test_just_above_at_risk_threshold_is_preferred(self):
+        # Boundary: 1.0 exactly is Preferred; just under is At Risk.
+        assert overall_status([self._scored(1.0, status=GREEN)]) == "Preferred"
+        assert overall_status([self._scored(0.9999, status=YELLOW)]) == "At Risk"
+
 
 # ── overall_status_color ──────────────────────────────────────────────────────
 
@@ -241,6 +258,27 @@ class TestLoadThresholds:
         mocker.patch("src.metrics.THRESHOLDS_FILE", path)
         data = load_thresholds()
         assert data["metrics"]["pCVR"]["target"] == 0.035
+
+    def test_invalid_json_raises_value_error(self, tmp_path, mocker):
+        path = tmp_path / "thresholds.json"
+        path.write_text("{not: valid json")
+        mocker.patch("src.metrics.THRESHOLDS_FILE", path)
+        with pytest.raises(ValueError, match="not valid JSON"):
+            load_thresholds()
+
+    def test_top_level_list_raises_value_error(self, tmp_path, mocker):
+        path = tmp_path / "thresholds.json"
+        path.write_text("[]")
+        mocker.patch("src.metrics.THRESHOLDS_FILE", path)
+        with pytest.raises(ValueError, match="malformed"):
+            load_thresholds()
+
+    def test_missing_metrics_key_raises_value_error(self, tmp_path, mocker):
+        path = tmp_path / "thresholds.json"
+        path.write_text(json.dumps({"source": "x"}))
+        mocker.patch("src.metrics.THRESHOLDS_FILE", path)
+        with pytest.raises(ValueError, match="malformed"):
+            load_thresholds()
 
 
 # ── team_summary ──────────────────────────────────────────────────────────────

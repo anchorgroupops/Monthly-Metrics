@@ -8,6 +8,7 @@ import pytest
 from src import threshold_researcher
 from src.threshold_researcher import (
     research_thresholds,
+    run_research,
     update_thresholds_file,
 )
 
@@ -184,3 +185,62 @@ class TestUpdateThresholdsFile:
         assert loaded["program_year"] == "2026"
         assert loaded["source"] == "src"
         assert "last_updated" in loaded
+
+    def test_atomic_write_does_not_corrupt_on_failure(self, tmp_path, mocker):
+        """If the rename fails, the original file must remain intact."""
+        path = tmp_path / "thresholds.json"
+        original = {"metrics": {"pCVR": {"target": 0.030, "weight": 2.0}}}
+        path.write_text(json.dumps(original))
+        mocker.patch("src.threshold_researcher.THRESHOLDS_FILE", path)
+
+        # Force the atomic-rename step to fail.
+        from pathlib import Path
+        original_replace = Path.replace
+        def boom(self, target):
+            if str(target).endswith("thresholds.json"):
+                raise OSError("simulated fs failure")
+            return original_replace(self, target)
+        mocker.patch.object(Path, "replace", boom)
+
+        with pytest.raises(OSError):
+            update_thresholds_file({
+                "source_notes": "x",
+                "metrics": {"pCVR": {"target": 0.999, "yellow_floor": 0.9, "unit": "percent"}},
+            })
+        # Original file untouched.
+        assert json.loads(path.read_text()) == original
+
+    def test_no_temp_file_left_behind_on_success(self, tmp_path, mocker):
+        path = tmp_path / "thresholds.json"
+        mocker.patch("src.threshold_researcher.THRESHOLDS_FILE", path)
+        update_thresholds_file({
+            "source_notes": "x",
+            "metrics": {"pCVR": {"target": 0.04, "yellow_floor": 0.03, "unit": "percent"}},
+        })
+        leftovers = list(tmp_path.glob("*.tmp"))
+        assert leftovers == []
+
+
+# ── run_research ──────────────────────────────────────────────────────────────
+
+class TestRunResearch:
+    def test_prints_summary_table_for_each_metric(self, tmp_path, mocker, capsys):
+        path = tmp_path / "thresholds.json"
+        mocker.patch("src.threshold_researcher.THRESHOLDS_FILE", path)
+        mocker.patch(
+            "src.threshold_researcher.research_thresholds",
+            return_value={
+                "source_notes": "test source",
+                "metrics": {
+                    "pCVR": {"target": 0.04, "yellow_floor": 0.03, "unit": "percent"},
+                    "pickup_rate": {"target": 0.85, "yellow_floor": 0.75, "unit": "percent"},
+                    "csat": {"target": 4.5, "yellow_floor": 4.0, "unit": "score"},
+                    "zhl_transfers": {"target": 3, "yellow_floor": 2, "unit": "count"},
+                },
+            },
+        )
+        run_research()
+        out = capsys.readouterr().out
+        assert "test source" in out
+        for key in ["pCVR", "pickup_rate", "csat", "zhl_transfers"]:
+            assert key in out

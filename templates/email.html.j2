@@ -119,7 +119,7 @@
                     style="background-color:{{ brand.color_bg }};
                            border-radius:10px; padding:20px 16px 12px;">
                   <!-- Inline SVG gauge for pCVR -->
-                  {{ gauges.pCVR }}
+                  {{ gauges.pCVR | safe }}
                   <p style="font-family:{{ brand.font_body }};
                              font-size:11px; color:{{ brand.color_text }};
                              opacity:0.6; margin:4px 0 0;
@@ -147,7 +147,7 @@
                            background-color:{{ brand.color_bg }};
                            border-radius:8px;
                            {%- if not loop.last %} margin-right:8px;{%- endif %}">
-                  {{ gauges[key] }}
+                  {{ gauges[key] | safe }}
                   {%- set m = agent.metrics[key] %}
                   <p style="font-family:{{ brand.font_body }};
                              font-size:10px; color:{{ brand.color_text }};

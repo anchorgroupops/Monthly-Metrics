@@ -30,7 +30,7 @@ python main.py --mode send --dry-run      # print recipients without delivering
 python -m http.server 8080 --directory output/review
 ```
 
-There is no test suite, lint config, or build step. `--verbose` enables debug logging. `OVERRIDE_REPORT_MONTH` in `config/settings.py` (format `"YYYY-MM"`) reruns a specific period; otherwise the prior calendar month is auto-detected.
+Run the test suite with `pytest` (configured via `pyproject.toml`; runs with branch coverage and fails under 90%). Install dev deps with `pip install -r requirements-dev.txt`. There is no lint config or build step. `--verbose` enables debug logging. `OVERRIDE_REPORT_MONTH` in `config/settings.py` (format `"YYYY-MM"`) reruns a specific period; otherwise the prior calendar month is auto-detected.
 
 ## Required environment variables
 

@@ -20,7 +20,7 @@ def _get_env() -> Environment:
     if _env is None:
         _env = Environment(
             loader=FileSystemLoader(str(TEMPLATES_DIR)),
-            autoescape=select_autoescape(["html"]),
+            autoescape=select_autoescape(["html", "j2"]),
         )
     return _env
 

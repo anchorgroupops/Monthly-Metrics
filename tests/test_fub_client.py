@@ -142,6 +142,42 @@ class TestNormalize:
         assert out["pickup_rate"] == 0.85
         assert out["zhl_transfers"] == 3
 
+    def test_zero_value_is_not_treated_as_missing(self, agent_cfg):
+        # Regression: previous `or` chain short-circuited on falsy 0.0 and fell
+        # through to the next field, ultimately producing None for a legitimate
+        # zero metric. Should now preserve 0.0 / 0 explicitly.
+        raw = {
+            "predictedConversionRate": 0.0,
+            "pickupRate": 0.0,
+            "csatScore": 0.0,
+            "zhlTransfers": 0,
+        }
+        out = _normalize(raw, agent_cfg, "March 2026", "2026-03-01", "2026-03-31")
+        assert out["pCVR"] == 0.0
+        assert out["pickup_rate"] == 0.0
+        assert out["csat"] == 0.0
+        assert out["zhl_transfers"] == 0
+
+    def test_zhl_transfers_accepts_float_string(self, agent_cfg):
+        # `int("3.6")` raises; the coercer should route through float first.
+        raw = {"zhlTransfers": "3.6"}
+        out = _normalize(raw, agent_cfg, "March 2026", "2026-03-01", "2026-03-31")
+        assert out["zhl_transfers"] == 3
+
+    def test_unparseable_value_becomes_none_with_warning(self, agent_cfg, caplog):
+        raw = {"predictedConversionRate": "not-a-number", "zhlTransfers": "abc"}
+        with caplog.at_level("WARNING"):
+            out = _normalize(raw, agent_cfg, "March 2026", "2026-03-01", "2026-03-31")
+        assert out["pCVR"] is None
+        assert out["zhl_transfers"] is None
+        assert "Could not coerce" in caplog.text
+
+    def test_empty_string_is_treated_as_missing(self, agent_cfg):
+        raw = {"predictedConversionRate": "", "zhlTransfers": ""}
+        out = _normalize(raw, agent_cfg, "March 2026", "2026-03-01", "2026-03-31")
+        assert out["pCVR"] is None
+        assert out["zhl_transfers"] is None
+
     def test_identity_and_period_are_passed_through(self, agent_cfg):
         out = _normalize({}, agent_cfg, "March 2026", "2026-03-01", "2026-03-31")
         assert out["agent_id"] == "abc"
@@ -269,6 +305,39 @@ class TestGetRetryBehavior:
             )
         with pytest.raises(requests.RequestException):
             fetch_zillow_preferred_report("a", "2026-03-01", "2026-03-31")
+
+    @responses.activate
+    def test_exhausting_429s_raises_runtime_error(self, mocker):
+        # Repeated 429s should bound at FUB_MAX_RETRIES and raise — not loop
+        # forever — even when no Retry-After header is present.
+        mocker.patch("src.fub_client.FUB_API_KEY", "key")
+        mocker.patch("src.fub_client.time.sleep")
+        mocker.patch("src.fub_client.FUB_MAX_RETRIES", 3)
+        for _ in range(3):
+            responses.add(
+                responses.GET, f"{self.BASE}/reporting/zillow-preferred",
+                status=429,
+            )
+        with pytest.raises(RuntimeError, match="unreachable"):
+            fetch_zillow_preferred_report("a", "2026-03-01", "2026-03-31")
+
+    @responses.activate
+    def test_429_backoff_grows_between_retries(self, mocker):
+        # Without a Retry-After header, the delay should double across retries
+        # (regression: previously stuck at the initial value).
+        mocker.patch("src.fub_client.FUB_API_KEY", "key")
+        sleep_spy = mocker.patch("src.fub_client.time.sleep")
+        mocker.patch("src.fub_client.FUB_MAX_RETRIES", 3)
+        responses.add(responses.GET, f"{self.BASE}/reporting/zillow-preferred", status=429)
+        responses.add(responses.GET, f"{self.BASE}/reporting/zillow-preferred", status=429)
+        responses.add(
+            responses.GET, f"{self.BASE}/reporting/zillow-preferred",
+            json={"ok": True}, status=200,
+        )
+        fetch_zillow_preferred_report("a", "2026-03-01", "2026-03-31")
+        sleep_calls = [c.args[0] for c in sleep_spy.call_args_list]
+        assert sleep_calls[0] == 2
+        assert sleep_calls[1] == 4
 
 
 # ── fetch_all_agents ──────────────────────────────────────────────────────────

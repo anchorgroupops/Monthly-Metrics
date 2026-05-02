@@ -8,9 +8,25 @@ addopts = [
     "-ra",
     "--strict-markers",
     "--strict-config",
+    "--cov=src",
+    "--cov=config",
+    "--cov=main",
+    "--cov-report=term-missing",
+    "--cov-fail-under=90",
 ]
 filterwarnings = [
     "error",
     # anthropic/httpx may emit deprecation warnings on newer Python — don't fail tests on them
     "ignore::DeprecationWarning",
+]
+
+[tool.coverage.run]
+branch = true
+
+[tool.coverage.report]
+show_missing = true
+exclude_lines = [
+    "pragma: no cover",
+    "if __name__ == .__main__.:",
+    "raise NotImplementedError",
 ]

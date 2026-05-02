@@ -158,8 +158,12 @@ def update_thresholds_file(research_results: dict, year: Optional[str] = None) -
     existing["source"] = research_results.get("source_notes", "AI research")
     existing["program_year"] = target_year
 
-    with open(THRESHOLDS_FILE, "w") as f:
+    # Atomic write: serialize to a temp file in the same directory and rename
+    # so that an interrupted run can never leave thresholds.json half-written.
+    tmp_path = THRESHOLDS_FILE.with_suffix(THRESHOLDS_FILE.suffix + ".tmp")
+    with open(tmp_path, "w") as f:
         json.dump(existing, f, indent=2)
+    tmp_path.replace(THRESHOLDS_FILE)
 
     log.info("thresholds.json updated at %s", THRESHOLDS_FILE)
 

@@ -32,10 +32,21 @@ def load_thresholds() -> dict:
             "Run: python main.py --mode research"
         )
     with open(THRESHOLDS_FILE) as f:
-        data = json.load(f)
+        try:
+            data = json.load(f)
+        except json.JSONDecodeError as e:
+            raise ValueError(
+                f"thresholds.json is not valid JSON ({e}). Re-run --mode research."
+            ) from e
+
+    if not isinstance(data, dict) or not isinstance(data.get("metrics"), dict):
+        raise ValueError(
+            "thresholds.json is malformed: expected an object with a 'metrics' "
+            "object at the top level."
+        )
 
     # Validate that thresholds have been populated
-    metrics = data.get("metrics", {})
+    metrics = data["metrics"]
     missing = [k for k in METRIC_KEYS if metrics.get(k, {}).get("target") is None]
     if missing:
         log.warning(

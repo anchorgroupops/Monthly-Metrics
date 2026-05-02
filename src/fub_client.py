@@ -76,6 +76,7 @@ def _get(path: str, params: Optional[dict] = None) -> dict:
                 retry_after = int(resp.headers.get("Retry-After", delay))
                 log.warning("Rate limited by FUB. Waiting %ds…", retry_after)
                 time.sleep(retry_after)
+                delay *= 2
                 continue
             resp.raise_for_status()
             return resp.json()
@@ -181,27 +182,10 @@ def _normalize(raw: dict, agent_cfg: dict, period: str, start: str, end: str) ->
     once you confirm the actual response shape from your account.
     Common observed fields are listed; add alternatives if needed.
     """
-    # Extract with fallbacks — FUB field names to confirm with your account rep
-    pCVR_raw = (
-        raw.get("predictedConversionRate")
-        or raw.get("pCVR")
-        or raw.get("conversionRatePredicted")
-    )
-    pickup_raw = (
-        raw.get("pickupRate")
-        or raw.get("callPickupRate")
-        or raw.get("answerRate")
-    )
-    csat_raw = (
-        raw.get("csatScore")
-        or raw.get("csat")
-        or raw.get("satisfactionScore")
-    )
-    zhl_raw = (
-        raw.get("zhlTransfers")
-        or raw.get("zillowHomeLoanTransfers")
-        or raw.get("transferCount")
-    )
+    pCVR_raw       = _first_present(raw, ["predictedConversionRate", "pCVR", "conversionRatePredicted"])
+    pickup_raw     = _first_present(raw, ["pickupRate", "callPickupRate", "answerRate"])
+    csat_raw       = _first_present(raw, ["csatScore", "csat", "satisfactionScore"])
+    zhl_raw        = _first_present(raw, ["zhlTransfers", "zillowHomeLoanTransfers", "transferCount"])
 
     return {
         "agent_id":      agent_cfg["fub_agent_id"],
@@ -210,12 +194,42 @@ def _normalize(raw: dict, agent_cfg: dict, period: str, start: str, end: str) ->
         "period":        period,
         "start_date":    start,
         "end_date":      end,
-        "pCVR":          float(pCVR_raw) if pCVR_raw is not None else None,
-        "pickup_rate":   float(pickup_raw) if pickup_raw is not None else None,
-        "csat":          float(csat_raw) if csat_raw is not None else None,
-        "zhl_transfers": int(zhl_raw) if zhl_raw is not None else None,
+        "pCVR":          _to_float(pCVR_raw),
+        "pickup_rate":   _to_float(pickup_raw),
+        "csat":          _to_float(csat_raw),
+        "zhl_transfers": _to_int(zhl_raw),
         "_raw":          raw,
     }
+
+
+def _first_present(raw: dict, keys: list[str]):
+    """Return the first key whose value is not None — distinguishes 0.0 from missing."""
+    for key in keys:
+        if raw.get(key) is not None:
+            return raw[key]
+    return None
+
+
+def _to_float(value) -> Optional[float]:
+    """Coerce to float; return None for None or unparseable values."""
+    if value is None or value == "":
+        return None
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        log.warning("Could not coerce %r to float; treating as missing.", value)
+        return None
+
+
+def _to_int(value) -> Optional[int]:
+    """Coerce to int; tolerates float-like strings ('3.0', '3.6') by going through float."""
+    if value is None or value == "":
+        return None
+    try:
+        return int(float(value))
+    except (TypeError, ValueError):
+        log.warning("Could not coerce %r to int; treating as missing.", value)
+        return None
 
 
 def _null_record(agent_cfg: dict, period: str, start: str, end: str) -> dict:
