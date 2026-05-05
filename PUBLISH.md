@@ -63,6 +63,13 @@ To use a different subdomain, run with an override:
 HOSTNAME_FQDN=metrics.joelycannoli.com scripts/install_tunnel.sh
 ```
 
+To keep the original hostname *and* add another one (both pointing at the same dashboard), use `scripts/add_hostname.sh` after the initial install:
+
+```bash
+scripts/add_hostname.sh metrics.joelycannoli.com
+# both anchor.joelycannoli.com and metrics.joelycannoli.com now serve the dashboard
+```
+
 ## 3. Verify from any device with internet
 
 From your laptop / phone:
