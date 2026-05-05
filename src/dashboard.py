@@ -117,6 +117,24 @@ def create_app() -> Flask:
     def inject_brand():
         return {"brand": BRAND}
 
+    # Host redirect: anchor.joelycannoli.com → metrics.joelycannoli.com (301).
+    # The admin dashboard now lives at metrics.*; anchor.* permanently
+    # redirects there until anchor.* is rebuilt as a public landing page.
+    # Override or disable via env vars (set REDIRECT_HOST_FROM= to disable).
+    redirect_from = os.environ.get("REDIRECT_HOST_FROM", "anchor.joelycannoli.com")
+    redirect_to = os.environ.get("REDIRECT_HOST_TO", "metrics.joelycannoli.com")
+
+    @app.before_request
+    def _canonical_host_redirect():
+        if not redirect_from or not redirect_to:
+            return None
+        if request.host.split(":")[0] != redirect_from:
+            return None
+        target = f"https://{redirect_to}{request.path}"
+        if request.query_string:
+            target += f"?{request.query_string.decode('ascii', errors='replace')}"
+        return redirect(target, code=301)
+
     # Clean up runs left in 'running' from a prior worker that died — otherwise
     # the manual-pull button would stay disabled forever after a gunicorn crash.
     _reap_stale_runs()
