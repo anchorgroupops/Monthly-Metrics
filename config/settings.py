@@ -28,7 +28,12 @@ RESEARCH_MAX_TOKENS = 1024
 
 # ── Email / SMTP ──────────────────────────────────────────────────────────────
 SMTP_HOST = os.environ.get("SMTP_HOST", "smtp.gmail.com")
-SMTP_PORT = int(os.environ.get("SMTP_PORT", "587"))
+def _parse_port(raw: str, default: int) -> int:
+    try:
+        return int(raw)
+    except (TypeError, ValueError):
+        return default
+SMTP_PORT = _parse_port(os.environ.get("SMTP_PORT", "587"), 587)
 SMTP_USER = os.environ.get("SMTP_USER", "")
 SMTP_PASSWORD = os.environ.get("SMTP_PASSWORD", "")
 EMAIL_FROM_NAME = "The Anchor Group"

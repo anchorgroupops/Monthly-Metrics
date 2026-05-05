@@ -1,15 +1,29 @@
 {% extends "admin/_base.html" %}
 {% block title %}Get started · Anchor Metrics{% endblock %}
 {% block content %}
-<section class="bg-white rounded-xl shadow p-10 text-center">
+<section class="bg-white rounded-xl shadow p-10 text-center max-w-2xl mx-auto mt-8">
   <h1 class="text-2xl font-bold brand-primary-text mb-2">Welcome to Anchor Metrics</h1>
   <p class="text-slate-600 mb-8 max-w-lg mx-auto">
-    No data has been ingested yet. Upload your first monthly Zillow Preferred
-    export (CSV or JSON) to populate the leaderboard.
+    No data has been ingested yet. Pull this month's numbers from Follow Up Boss
+    automatically, or upload a CSV / JSON file manually.
   </p>
-  <a href="{{ url_for('upload') }}"
-     class="inline-block brand-primary text-white font-semibold px-6 py-3 rounded-lg hover:opacity-90">
-    Upload first month's data
-  </a>
+
+  <div class="flex flex-col sm:flex-row gap-3 justify-center">
+    <form method="POST" action="{{ url_for('pull_now') }}" class="inline">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <button type="submit"
+              class="brand-primary text-white font-semibold px-6 py-3 rounded-lg hover:opacity-90">
+        Pull from FUB now
+      </button>
+    </form>
+    <a href="{{ url_for('upload') }}"
+       class="bg-white border border-slate-300 text-slate-700 font-medium px-6 py-3 rounded-lg hover:bg-slate-50">
+      Upload CSV / JSON
+    </a>
+  </div>
+
+  <p class="text-xs text-slate-400 mt-6">
+    A pull also runs automatically at 9:00 a.m. on the 1st of each month.
+  </p>
 </section>
 {% endblock %}

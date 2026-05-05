@@ -137,10 +137,35 @@ def create_app() -> Flask:
 
     # Clean up runs left in 'running' from a prior worker that died — otherwise
     # the manual-pull button would stay disabled forever after a gunicorn crash.
-    _reap_stale_runs()
+    # Wrapped: a SQLite hiccup at startup must not prevent the app from booting.
+    try:
+        _reap_stale_runs()
+    except Exception:
+        log.exception("Stale-run reaper failed at startup (continuing)")
 
     _register_routes(app, limiter)
+    _register_error_handlers(app)
     return app
+
+
+def _register_error_handlers(app: Flask) -> None:
+    """Friendly error pages so production never shows a raw traceback."""
+
+    @app.errorhandler(404)
+    def _not_found(_):
+        return render_template("admin/error.html",
+                               code=404,
+                               title="Not found",
+                               message="That page doesn't exist on this dashboard."), 404
+
+    @app.errorhandler(500)
+    def _internal_error(e):
+        log.exception("Unhandled 500: %s", e)
+        return render_template("admin/error.html",
+                               code=500,
+                               title="Something broke",
+                               message="The dashboard hit an unexpected error. "
+                                       "Check `journalctl -u anchor-dashboard` for details."), 500
 
 
 # ── Manual-pull background pipeline ───────────────────────────────────────────
