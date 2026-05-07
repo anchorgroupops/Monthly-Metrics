@@ -22,8 +22,6 @@ from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 
 from config.settings import (
-    AGENTS,
-    BRAND,
     EMAIL_FROM_ADDRESS,
     EMAIL_FROM_NAME,
     EMAIL_SUBJECT_TEMPLATE,
@@ -45,8 +43,10 @@ def setup_logging(verbose: bool = False) -> None:
 
 # ── Mode: research ────────────────────────────────────────────────────────────
 
+
 def cmd_research(args) -> int:
     from src.threshold_researcher import run_research
+
     print("\n── Researching Zillow Preferred KPIs… ──")
     run_research()
     return 0
@@ -54,15 +54,16 @@ def cmd_research(args) -> int:
 
 # ── Mode: pull ────────────────────────────────────────────────────────────────
 
+
 def cmd_pull(args) -> int:
     """
     Fetch the prior-month metrics from FUB and persist to SQLite. Idempotent:
     re-running for the same period upserts on (agent_id, period, metric_key).
     Used by the cron pipeline and the dashboard's manual-pull button.
     """
+    from config.settings import AGENTS, FUB_API_KEY
     from src.fub_client import fetch_all_agents
     from src.storage import finish_run, save_period, start_run
-    from config.settings import AGENTS, FUB_API_KEY
 
     print("\n── Pull Mode ────────────────────────────────────────────────────────")
 
@@ -86,7 +87,7 @@ def cmd_pull(args) -> int:
             return 0
         save_period(agents, source="fub", run_id=run_id)
         print(f"  Pulled {len(agents)} agent record(s) from FUB.")
-        print(f"  Next: python main.py --mode draft\n")
+        print("  Next: python main.py --mode draft\n")
         return 0
     except Exception as exc:
         finish_run(run_id, "error", str(exc))
@@ -98,6 +99,7 @@ def cmd_pull(args) -> int:
 
 # ── Mode: upload ──────────────────────────────────────────────────────────────
 
+
 def cmd_upload(args) -> int:
     from src.csv_ingest import parse_file
     from src.storage import save_period
@@ -107,7 +109,7 @@ def cmd_upload(args) -> int:
         print("    python main.py --mode upload data/april_2026.csv")
         return 1
 
-    print(f"\n── Upload Mode ──────────────────────────────────────────────────────")
+    print("\n── Upload Mode ──────────────────────────────────────────────────────")
     print(f"  File: {args.file}")
 
     try:
@@ -121,11 +123,12 @@ def cmd_upload(args) -> int:
     run_id = save_period(agents, source=source, file_path=args.file)
 
     print(f"  Ingested {len(agents)} agent record(s) — run #{run_id}.")
-    print(f"  Next: python main.py --mode draft   to queue draft emails for approval.\n")
+    print("  Next: python main.py --mode draft   to queue draft emails for approval.\n")
     return 0
 
 
 # ── Mode: review ──────────────────────────────────────────────────────────────
+
 
 def cmd_review(args) -> int:
     from src.metrics import score_all_agents
@@ -150,6 +153,7 @@ def cmd_review(args) -> int:
 
 
 # ── Mode: draft ───────────────────────────────────────────────────────────────
+
 
 def cmd_draft(args) -> int:
     """Queue draft emails for admin approval. Does NOT send."""
@@ -182,6 +186,7 @@ def cmd_draft(args) -> int:
 
 # ── Mode: dashboard ───────────────────────────────────────────────────────────
 
+
 def cmd_dashboard(args) -> int:
     from src.dashboard import create_app
 
@@ -194,6 +199,7 @@ def cmd_dashboard(args) -> int:
 
 
 # ── Mode: send ────────────────────────────────────────────────────────────────
+
 
 def cmd_send(args) -> int:
     """Send only drafts in the approval queue with status='approved'."""
@@ -226,6 +232,7 @@ def cmd_send(args) -> int:
             server.login(SMTP_USER, SMTP_PASSWORD)
 
             from src.storage import period_label
+
             for d in approved:
                 full = get_draft(d["id"])
                 msg = MIMEMultipart("alternative")
@@ -248,11 +255,13 @@ def cmd_send(args) -> int:
 
 # ── Mode: single agent shortcut ───────────────────────────────────────────────
 
+
 def cmd_agent(args) -> int:
     return cmd_review(args)
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
+
 
 def _load_source_agents(args) -> list[dict]:
     """
@@ -297,6 +306,7 @@ def _load_source_agents(args) -> list[dict]:
 
 def _check_fub_key() -> None:
     from config.settings import FUB_API_KEY
+
     if not FUB_API_KEY:
         print(
             "  ERROR: FUB_API_KEY environment variable not set.\n"
@@ -319,6 +329,7 @@ def _filter_agent(scored: list[dict], name: str) -> list[dict]:
 
 
 # ── Entry point ───────────────────────────────────────────────────────────────
+
 
 def main() -> int:
     parser = argparse.ArgumentParser(
@@ -362,7 +373,8 @@ def main() -> int:
         help="(send mode) Print recipients without actually sending emails",
     )
     parser.add_argument(
-        "--verbose", "-v",
+        "--verbose",
+        "-v",
         action="store_true",
         help="Enable debug logging",
     )
