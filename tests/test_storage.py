@@ -144,9 +144,7 @@ class TestRuns:
         storage.finish_run(run_id, "ok", "completed cleanly")
 
         with storage.connect() as conn:
-            row = conn.execute(
-                "SELECT status, notes FROM runs WHERE id = ?", (run_id,)
-            ).fetchone()
+            row = conn.execute("SELECT status, notes FROM runs WHERE id = ?", (run_id,)).fetchone()
         assert row["status"] == "ok"
         assert row["notes"] == "completed cleanly"
 

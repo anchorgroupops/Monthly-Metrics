@@ -12,8 +12,8 @@ from unittest.mock import patch
 
 import pytest
 
-
 # ── storage: run lifecycle ────────────────────────────────────────────────────
+
 
 def test_start_run_creates_running_row(isolated_db):
     from src import storage
@@ -50,10 +50,15 @@ def test_save_period_with_run_id_updates_existing(isolated_db):
     from src import storage
 
     run_id = storage.start_run(source="fub")
-    agents = [{
-        "agent_id": "a1", "name": "A", "email": "a@x.com",
-        "period": "2026-04", "pCVR": 0.05,
-    }]
+    agents = [
+        {
+            "agent_id": "a1",
+            "name": "A",
+            "email": "a@x.com",
+            "period": "2026-04",
+            "pCVR": 0.05,
+        }
+    ]
     storage.save_period(agents, source="fub", run_id=run_id)
 
     # Exactly one row for this run, in 'ok' state.
@@ -70,10 +75,15 @@ def test_save_period_without_run_id_inserts_new(isolated_db):
     """Backwards-compat: save_period without run_id still inserts a new row."""
     from src import storage
 
-    agents = [{
-        "agent_id": "a1", "name": "A", "email": "a@x.com",
-        "period": "2026-04", "pCVR": 0.05,
-    }]
+    agents = [
+        {
+            "agent_id": "a1",
+            "name": "A",
+            "email": "a@x.com",
+            "period": "2026-04",
+            "pCVR": 0.05,
+        }
+    ]
     storage.save_period(agents, source="csv")
     with storage.connect() as conn:
         rows = conn.execute("SELECT status FROM runs").fetchall()
@@ -83,20 +93,35 @@ def test_save_period_without_run_id_inserts_new(isolated_db):
 
 # ── cmd_pull ──────────────────────────────────────────────────────────────────
 
+
 @pytest.fixture
 def fake_fub_agents():
     """Two-agent payload that matches what fetch_all_agents() would return."""
     return [
         {
-            "agent_id": "100", "name": "Alex Rivera", "email": "alex@x.com",
-            "period": "April 2026", "start_date": "2026-04-01", "end_date": "2026-04-30",
-            "pCVR": 0.038, "pickup_rate": 0.91, "csat": 4.7, "zhl_transfers": 5,
+            "agent_id": "100",
+            "name": "Alex Rivera",
+            "email": "alex@x.com",
+            "period": "April 2026",
+            "start_date": "2026-04-01",
+            "end_date": "2026-04-30",
+            "pCVR": 0.038,
+            "pickup_rate": 0.91,
+            "csat": 4.7,
+            "zhl_transfers": 5,
             "_raw": {},
         },
         {
-            "agent_id": "200", "name": "Jordan Lee", "email": "jordan@x.com",
-            "period": "April 2026", "start_date": "2026-04-01", "end_date": "2026-04-30",
-            "pCVR": 0.021, "pickup_rate": 0.74, "csat": 4.1, "zhl_transfers": 2,
+            "agent_id": "200",
+            "name": "Jordan Lee",
+            "email": "jordan@x.com",
+            "period": "April 2026",
+            "start_date": "2026-04-01",
+            "end_date": "2026-04-30",
+            "pCVR": 0.021,
+            "pickup_rate": 0.74,
+            "csat": 4.1,
+            "zhl_transfers": 2,
             "_raw": {},
         },
     ]
@@ -105,6 +130,7 @@ def fake_fub_agents():
 def _patched_settings(monkeypatch):
     """cmd_pull guards on AGENTS + FUB_API_KEY — tests bypass those gates."""
     from config import settings
+
     monkeypatch.setattr(settings, "AGENTS", [{"name": "x", "email": "x@x", "fub_agent_id": "100"}])
     monkeypatch.setattr(settings, "FUB_API_KEY", "test-key")
 

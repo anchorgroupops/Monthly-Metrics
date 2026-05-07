@@ -43,10 +43,7 @@ def test_csv_missing_metric_column(tmp_path, isolated_thresholds):
     from src.csv_ingest import parse_file
 
     bad = tmp_path / "bad.csv"
-    bad.write_text(
-        "agent_id,name,email,period,csat\n"
-        "a1,A,a@x.com,April 2026,0.9\n"
-    )
+    bad.write_text("agent_id,name,email,period,csat\na1,A,a@x.com,April 2026,0.9\n")
     with pytest.raises(ValueError, match="missing metric columns"):
         parse_file(bad)
 
@@ -55,11 +52,19 @@ def test_json_ingest(tmp_path, isolated_db, isolated_thresholds):
     from src.csv_ingest import parse_file
     from src.storage import load_period, save_period
 
-    payload = [{
-        "agent_id": "j1", "name": "Jay", "email": "j@x.com", "period": "2026-04",
-        "speed_to_action": 250, "work_with_rate": 0.55, "csat": 0.88,
-        "appt_set_rate": 0.65, "appt_met_rate": 0.72,
-    }]
+    payload = [
+        {
+            "agent_id": "j1",
+            "name": "Jay",
+            "email": "j@x.com",
+            "period": "2026-04",
+            "speed_to_action": 250,
+            "work_with_rate": 0.55,
+            "csat": 0.88,
+            "appt_set_rate": 0.65,
+            "appt_met_rate": 0.72,
+        }
+    ]
     f = tmp_path / "april.json"
     f.write_text(json.dumps(payload))
 
@@ -75,6 +80,7 @@ def test_json_ingest(tmp_path, isolated_db, isolated_thresholds):
 
 def test_period_normalization():
     from src.storage import normalize_period
+
     assert normalize_period("April 2026") == "2026-04"
     assert normalize_period("2026-04") == "2026-04"
     assert normalize_period("2026-04-15") == "2026-04"

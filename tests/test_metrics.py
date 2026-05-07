@@ -6,15 +6,21 @@ from tests.conftest import write_thresholds
 
 
 def test_higher_is_better_green(isolated_thresholds):
-    write_thresholds(isolated_thresholds, {
-        "csat": {
-            "label": "CSAT", "unit": "percent",
-            "target": 0.85, "yellow_floor": 0.75,
-            "direction": "higher_is_better",
-            "weight": 1.0, "gauge_size": "hero",
-            "description": "x",
+    write_thresholds(
+        isolated_thresholds,
+        {
+            "csat": {
+                "label": "CSAT",
+                "unit": "percent",
+                "target": 0.85,
+                "yellow_floor": 0.75,
+                "direction": "higher_is_better",
+                "weight": 1.0,
+                "gauge_size": "hero",
+                "description": "x",
+            },
         },
-    })
+    )
     from src.metrics import load_thresholds, score_metric
 
     cfg = load_thresholds()["metrics"]["csat"]
@@ -24,15 +30,21 @@ def test_higher_is_better_green(isolated_thresholds):
 
 
 def test_lower_is_better_speed_to_action(isolated_thresholds):
-    write_thresholds(isolated_thresholds, {
-        "speed_to_action": {
-            "label": "Speed to Action", "unit": "seconds",
-            "target": 300, "yellow_floor": 600,
-            "direction": "lower_is_better",
-            "weight": 1.0, "gauge_size": "hero",
-            "description": "x",
+    write_thresholds(
+        isolated_thresholds,
+        {
+            "speed_to_action": {
+                "label": "Speed to Action",
+                "unit": "seconds",
+                "target": 300,
+                "yellow_floor": 600,
+                "direction": "lower_is_better",
+                "weight": 1.0,
+                "gauge_size": "hero",
+                "description": "x",
+            },
         },
-    })
+    )
     from src.metrics import load_thresholds, score_metric
 
     cfg = load_thresholds()["metrics"]["speed_to_action"]
@@ -49,15 +61,21 @@ def test_lower_is_better_speed_to_action(isolated_thresholds):
 
 
 def test_no_data_when_value_missing(isolated_thresholds):
-    write_thresholds(isolated_thresholds, {
-        "csat": {
-            "label": "CSAT", "unit": "percent",
-            "target": 0.85, "yellow_floor": 0.75,
-            "direction": "higher_is_better",
-            "weight": 1.0, "gauge_size": "hero",
-            "description": "x",
+    write_thresholds(
+        isolated_thresholds,
+        {
+            "csat": {
+                "label": "CSAT",
+                "unit": "percent",
+                "target": 0.85,
+                "yellow_floor": 0.75,
+                "direction": "higher_is_better",
+                "weight": 1.0,
+                "gauge_size": "hero",
+                "description": "x",
+            },
         },
-    })
+    )
     from src.metrics import load_thresholds, score_metric
 
     cfg = load_thresholds()["metrics"]["csat"]
@@ -67,26 +85,40 @@ def test_no_data_when_value_missing(isolated_thresholds):
 
 
 def test_overall_status_weighted(isolated_thresholds):
-    write_thresholds(isolated_thresholds, {
-        "speed_to_action": {
-            "label": "Speed", "unit": "seconds", "target": 300, "yellow_floor": 600,
-            "direction": "lower_is_better", "weight": 1.0, "gauge_size": "hero",
-            "description": "x",
+    write_thresholds(
+        isolated_thresholds,
+        {
+            "speed_to_action": {
+                "label": "Speed",
+                "unit": "seconds",
+                "target": 300,
+                "yellow_floor": 600,
+                "direction": "lower_is_better",
+                "weight": 1.0,
+                "gauge_size": "hero",
+                "description": "x",
+            },
+            "csat": {
+                "label": "CSAT",
+                "unit": "percent",
+                "target": 0.85,
+                "yellow_floor": 0.75,
+                "direction": "higher_is_better",
+                "weight": 0.5,
+                "gauge_size": "secondary",
+                "description": "x",
+            },
         },
-        "csat": {
-            "label": "CSAT", "unit": "percent", "target": 0.85, "yellow_floor": 0.75,
-            "direction": "higher_is_better", "weight": 0.5, "gauge_size": "secondary",
-            "description": "x",
-        },
-    })
-    from src.metrics import score_agent
-
-    from src.metrics import load_thresholds
+    )
+    from src.metrics import load_thresholds, score_agent
 
     agent = {
-        "agent_id": "a1", "name": "A", "email": "a@x.com", "period": "April 2026",
-        "speed_to_action": 200,   # green (under target)
-        "csat": 0.90,             # green
+        "agent_id": "a1",
+        "name": "A",
+        "email": "a@x.com",
+        "period": "April 2026",
+        "speed_to_action": 200,  # green (under target)
+        "csat": 0.90,  # green
     }
     scored = score_agent(agent, load_thresholds())
     assert scored["overall_status"] == "Preferred"
@@ -95,17 +127,28 @@ def test_overall_status_weighted(isolated_thresholds):
 
 
 def test_operational_readiness_handles_no_data(isolated_thresholds):
-    write_thresholds(isolated_thresholds, {
-        "csat": {
-            "label": "CSAT", "unit": "percent", "target": 0.85, "yellow_floor": 0.75,
-            "direction": "higher_is_better", "weight": 1.0, "gauge_size": "hero",
-            "description": "x",
+    write_thresholds(
+        isolated_thresholds,
+        {
+            "csat": {
+                "label": "CSAT",
+                "unit": "percent",
+                "target": 0.85,
+                "yellow_floor": 0.75,
+                "direction": "higher_is_better",
+                "weight": 1.0,
+                "gauge_size": "hero",
+                "description": "x",
+            },
         },
-    })
+    )
     from src.metrics import load_thresholds, score_agent
 
     agent = {
-        "agent_id": "a1", "name": "A", "email": "a@x.com", "period": "April 2026",
+        "agent_id": "a1",
+        "name": "A",
+        "email": "a@x.com",
+        "period": "April 2026",
         "csat": None,
     }
     scored = score_agent(agent, load_thresholds())
@@ -114,23 +157,41 @@ def test_operational_readiness_handles_no_data(isolated_thresholds):
 
 
 def test_metric_keys_hero_first_then_weight(isolated_thresholds):
-    write_thresholds(isolated_thresholds, {
-        "low_weight": {
-            "label": "L", "unit": "percent", "target": 1, "yellow_floor": 0.5,
-            "direction": "higher_is_better", "weight": 0.2, "gauge_size": "secondary",
-            "description": "x",
+    write_thresholds(
+        isolated_thresholds,
+        {
+            "low_weight": {
+                "label": "L",
+                "unit": "percent",
+                "target": 1,
+                "yellow_floor": 0.5,
+                "direction": "higher_is_better",
+                "weight": 0.2,
+                "gauge_size": "secondary",
+                "description": "x",
+            },
+            "hero_metric": {
+                "label": "H",
+                "unit": "percent",
+                "target": 1,
+                "yellow_floor": 0.5,
+                "direction": "higher_is_better",
+                "weight": 0.5,
+                "gauge_size": "hero",
+                "description": "x",
+            },
+            "high_weight": {
+                "label": "HW",
+                "unit": "percent",
+                "target": 1,
+                "yellow_floor": 0.5,
+                "direction": "higher_is_better",
+                "weight": 0.9,
+                "gauge_size": "secondary",
+                "description": "x",
+            },
         },
-        "hero_metric": {
-            "label": "H", "unit": "percent", "target": 1, "yellow_floor": 0.5,
-            "direction": "higher_is_better", "weight": 0.5, "gauge_size": "hero",
-            "description": "x",
-        },
-        "high_weight": {
-            "label": "HW", "unit": "percent", "target": 1, "yellow_floor": 0.5,
-            "direction": "higher_is_better", "weight": 0.9, "gauge_size": "secondary",
-            "description": "x",
-        },
-    })
+    )
     from src.metrics import metric_keys
 
     assert metric_keys()[0] == "hero_metric"

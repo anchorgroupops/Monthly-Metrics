@@ -1,11 +1,9 @@
 """Tests for main.py CLI behavior."""
 
-import pytest
-
 import main as cli
 
-
 # ── _filter_agent ─────────────────────────────────────────────────────────────
+
 
 class TestFilterAgent:
     def _agents(self):
@@ -50,6 +48,7 @@ class TestFilterAgent:
 
 
 # ── argparse entry point ──────────────────────────────────────────────────────
+
 
 class TestMainEntryPoint:
     def test_single_agent_shortcut_defaults_to_review(self, mocker):

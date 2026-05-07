@@ -62,6 +62,7 @@ class TestCmdUpload:
         assert rc == 0
 
         from src import storage
+
         assert len(storage.load_period("2026-04")) == 1
 
     def test_json_extension_uses_json_source(self, isolated_db, tmp_path):
@@ -106,6 +107,7 @@ class TestCmdReview:
         monkeypatch.setattr(review_mode, "REVIEW_DIR", tmp_path)
 
         from main import cmd_review
+
         rc = cmd_review(_args(mock=True))
         assert rc == 0
         # Output files should exist
@@ -114,9 +116,9 @@ class TestCmdReview:
 
     def test_no_data_returns_1(self, isolated_db, monkeypatch):
         """Empty DB + no mock + no fub key → _check_fub_key exits."""
+        from config import settings
         from main import cmd_review
 
-        from config import settings
         monkeypatch.setattr(settings, "FUB_API_KEY", "")
 
         with pytest.raises(SystemExit) as exc:
@@ -129,6 +131,7 @@ class TestCmdReview:
         monkeypatch.setattr(review_mode, "REVIEW_DIR", tmp_path)
 
         from main import cmd_review
+
         rc = cmd_review(_args(mock=True, agent="ZZZ-NoSuchAgent-ZZZ"))
         assert rc == 1
 
@@ -158,9 +161,9 @@ class TestCmdDraft:
         assert drafts[0]["agent_id"] == "mock-001"
 
     def test_no_data_returns_1(self, isolated_db, monkeypatch):
+        from config import settings
         from main import cmd_draft
 
-        from config import settings
         monkeypatch.setattr(settings, "FUB_API_KEY", "")
 
         with pytest.raises(SystemExit):
@@ -168,6 +171,7 @@ class TestCmdDraft:
 
     def test_agent_filter_no_match_returns_1(self, isolated_db):
         from main import cmd_draft
+
         rc = cmd_draft(_args(mock=True, agent="ZZZ"))
         assert rc == 1
 
@@ -204,8 +208,16 @@ class TestCmdSend:
         from src import storage
 
         storage.save_period(
-            [{"agent_id": "100", "name": "A", "email": "a@x", "period": "April 2026",
-              "csat": 0.85, "_raw": {}}],
+            [
+                {
+                    "agent_id": "100",
+                    "name": "A",
+                    "email": "a@x",
+                    "period": "April 2026",
+                    "csat": 0.85,
+                    "_raw": {},
+                }
+            ],
             source="csv",
         )
         d = storage.queue_draft("100", "April 2026", "<html/>")
@@ -225,9 +237,18 @@ class TestCmdSend:
         monkeypatch.setattr(main, "SMTP_PASSWORD", "")
 
         from src import storage
+
         storage.save_period(
-            [{"agent_id": "100", "name": "A", "email": "a@x", "period": "April 2026",
-              "csat": 0.85, "_raw": {}}],
+            [
+                {
+                    "agent_id": "100",
+                    "name": "A",
+                    "email": "a@x",
+                    "period": "April 2026",
+                    "csat": 0.85,
+                    "_raw": {},
+                }
+            ],
             source="csv",
         )
         d = storage.queue_draft("100", "April 2026", "<html/>")
@@ -245,9 +266,18 @@ class TestCmdSend:
         monkeypatch.setattr(main, "SMTP_PORT", 587)
 
         from src import storage
+
         storage.save_period(
-            [{"agent_id": "100", "name": "A", "email": "a@x.com", "period": "April 2026",
-              "csat": 0.85, "_raw": {}}],
+            [
+                {
+                    "agent_id": "100",
+                    "name": "A",
+                    "email": "a@x.com",
+                    "period": "April 2026",
+                    "csat": 0.85,
+                    "_raw": {},
+                }
+            ],
             source="csv",
         )
         d = storage.queue_draft("100", "April 2026", "<html/>")
@@ -278,9 +308,18 @@ class TestCmdSend:
         smtp_class.return_value.__enter__.side_effect = smtplib.SMTPException("boom")
 
         from src import storage
+
         storage.save_period(
-            [{"agent_id": "100", "name": "A", "email": "a@x", "period": "April 2026",
-              "csat": 0.85, "_raw": {}}],
+            [
+                {
+                    "agent_id": "100",
+                    "name": "A",
+                    "email": "a@x",
+                    "period": "April 2026",
+                    "csat": 0.85,
+                    "_raw": {},
+                }
+            ],
             source="csv",
         )
         d = storage.queue_draft("100", "April 2026", "<html/>")
@@ -320,8 +359,16 @@ class TestLoadSourceAgents:
         from src import storage
 
         storage.save_period(
-            [{"agent_id": "100", "name": "A", "email": "a@x", "period": "April 2026",
-              "csat": 0.85, "_raw": {}}],
+            [
+                {
+                    "agent_id": "100",
+                    "name": "A",
+                    "email": "a@x",
+                    "period": "April 2026",
+                    "csat": 0.85,
+                    "_raw": {},
+                }
+            ],
             source="csv",
         )
 
@@ -336,15 +383,23 @@ class TestLoadSourceAgents:
         assert "No data found" in capsys.readouterr().out
 
     def test_source_fub_calls_fub_client(self, isolated_db, monkeypatch, mocker):
+        from config import settings
         from main import _load_source_agents
 
-        from config import settings
         monkeypatch.setattr(settings, "FUB_API_KEY", "test-key")
 
         fetch = mocker.patch(
             "src.fub_client.fetch_all_agents",
-            return_value=[{"agent_id": "100", "name": "A", "email": "a@x", "period": "April 2026",
-                           "csat": 0.85, "_raw": {}}],
+            return_value=[
+                {
+                    "agent_id": "100",
+                    "name": "A",
+                    "email": "a@x",
+                    "period": "April 2026",
+                    "csat": 0.85,
+                    "_raw": {},
+                }
+            ],
         )
 
         agents = _load_source_agents(_args(source="fub"))
@@ -357,8 +412,16 @@ class TestLoadSourceAgents:
         from src import storage
 
         storage.save_period(
-            [{"agent_id": "100", "name": "A", "email": "a@x", "period": "April 2026",
-              "csat": 0.85, "_raw": {}}],
+            [
+                {
+                    "agent_id": "100",
+                    "name": "A",
+                    "email": "a@x",
+                    "period": "April 2026",
+                    "csat": 0.85,
+                    "_raw": {},
+                }
+            ],
             source="csv",
         )
         # FUB should NOT be called
@@ -369,15 +432,23 @@ class TestLoadSourceAgents:
         fetch.assert_not_called()
 
     def test_default_falls_back_to_fub_when_storage_empty(self, isolated_db, monkeypatch, mocker):
+        from config import settings
         from main import _load_source_agents
 
-        from config import settings
         monkeypatch.setattr(settings, "FUB_API_KEY", "test-key")
 
         fetch = mocker.patch(
             "src.fub_client.fetch_all_agents",
-            return_value=[{"agent_id": "100", "name": "A", "email": "a@x", "period": "April 2026",
-                           "csat": 0.85, "_raw": {}}],
+            return_value=[
+                {
+                    "agent_id": "100",
+                    "name": "A",
+                    "email": "a@x",
+                    "period": "April 2026",
+                    "csat": 0.85,
+                    "_raw": {},
+                }
+            ],
         )
 
         agents = _load_source_agents(_args())
@@ -390,17 +461,17 @@ class TestLoadSourceAgents:
 
 class TestCheckFubKey:
     def test_passes_when_key_present(self, monkeypatch):
+        from config import settings
         from main import _check_fub_key
 
-        from config import settings
         monkeypatch.setattr(settings, "FUB_API_KEY", "test-key")
 
         _check_fub_key()  # should not exit
 
     def test_exits_when_key_missing(self, monkeypatch, capsys):
+        from config import settings
         from main import _check_fub_key
 
-        from config import settings
         monkeypatch.setattr(settings, "FUB_API_KEY", "")
 
         with pytest.raises(SystemExit) as exc:
@@ -414,9 +485,9 @@ class TestCheckFubKey:
 
 class TestCmdPullBranches:
     def test_pull_with_no_agents_returns_0(self, isolated_db, monkeypatch):
+        from config import settings
         from main import cmd_pull
 
-        from config import settings
         monkeypatch.setattr(settings, "AGENTS", [])
         monkeypatch.setattr(settings, "FUB_API_KEY", "test-key")
 
@@ -424,10 +495,12 @@ class TestCmdPullBranches:
         assert rc == 0  # No agents → graceful early return
 
     def test_pull_with_no_api_key_returns_1(self, isolated_db, monkeypatch):
+        from config import settings
         from main import cmd_pull
 
-        from config import settings
-        monkeypatch.setattr(settings, "AGENTS", [{"name": "x", "email": "x@x", "fub_agent_id": "1"}])
+        monkeypatch.setattr(
+            settings, "AGENTS", [{"name": "x", "email": "x@x", "fub_agent_id": "1"}]
+        )
         monkeypatch.setattr(settings, "FUB_API_KEY", "")
 
         rc = cmd_pull(_args())

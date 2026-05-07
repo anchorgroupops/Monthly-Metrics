@@ -5,7 +5,6 @@ from datetime import datetime, timedelta
 
 import pytest
 
-
 # ── Fixtures ──────────────────────────────────────────────────────────────────
 
 
@@ -135,9 +134,7 @@ class TestLogout:
 
 
 class TestLoginRequired:
-    @pytest.mark.parametrize(
-        "path", ["/home", "/upload", "/pull-status", "/review/2026-04"]
-    )
+    @pytest.mark.parametrize("path", ["/home", "/upload", "/pull-status", "/review/2026-04"])
     def test_get_redirects_to_login_when_anonymous(self, client, path):
         resp = client.get(path, follow_redirects=False)
         assert resp.status_code in (301, 302, 303)
@@ -222,7 +219,6 @@ class TestUpload:
 
 class TestPull:
     def test_pull_now_no_agents_flashes_error(self, auth_client, monkeypatch):
-        from src import dashboard
 
         # Module-level imports inside the route — patch settings module
         from config import settings
@@ -234,7 +230,9 @@ class TestPull:
     def test_pull_now_no_api_key_flashes_error(self, auth_client, monkeypatch):
         from config import settings
 
-        monkeypatch.setattr(settings, "AGENTS", [{"name": "x", "email": "x@x", "fub_agent_id": "1"}])
+        monkeypatch.setattr(
+            settings, "AGENTS", [{"name": "x", "email": "x@x", "fub_agent_id": "1"}]
+        )
         monkeypatch.setattr(settings, "FUB_API_KEY", "")
         resp = auth_client.post("/pull-now", follow_redirects=False)
         assert resp.status_code in (302, 303)
@@ -243,7 +241,9 @@ class TestPull:
         from config import settings
         from src import storage
 
-        monkeypatch.setattr(settings, "AGENTS", [{"name": "x", "email": "x@x", "fub_agent_id": "1"}])
+        monkeypatch.setattr(
+            settings, "AGENTS", [{"name": "x", "email": "x@x", "fub_agent_id": "1"}]
+        )
         monkeypatch.setattr(settings, "FUB_API_KEY", "test-key")
 
         # Manually create an in-progress run
@@ -259,7 +259,9 @@ class TestPull:
     def test_pull_now_starts_thread(self, auth_client, monkeypatch, mocker):
         from config import settings
 
-        monkeypatch.setattr(settings, "AGENTS", [{"name": "x", "email": "x@x", "fub_agent_id": "1"}])
+        monkeypatch.setattr(
+            settings, "AGENTS", [{"name": "x", "email": "x@x", "fub_agent_id": "1"}]
+        )
         monkeypatch.setattr(settings, "FUB_API_KEY", "test-key")
 
         # Mock Thread to avoid actually running the worker
@@ -295,8 +297,16 @@ class TestDraftPreview:
         from src import storage
 
         storage.save_period(
-            [{"agent_id": "100", "name": "A", "email": "a@x", "period": "2026-04",
-              "csat": 0.85, "_raw": {}}],
+            [
+                {
+                    "agent_id": "100",
+                    "name": "A",
+                    "email": "a@x",
+                    "period": "2026-04",
+                    "csat": 0.85,
+                    "_raw": {},
+                }
+            ],
             source="csv",
         )
         draft_id = storage.queue_draft("100", "2026-04", "<html><body>Preview body</body></html>")
@@ -315,8 +325,16 @@ class TestDraftApprove:
         from src import storage
 
         storage.save_period(
-            [{"agent_id": "100", "name": "A", "email": "a@x", "period": "2026-04",
-              "csat": 0.85, "_raw": {}}],
+            [
+                {
+                    "agent_id": "100",
+                    "name": "A",
+                    "email": "a@x",
+                    "period": "2026-04",
+                    "csat": 0.85,
+                    "_raw": {},
+                }
+            ],
             source="csv",
         )
         draft_id = storage.queue_draft("100", "2026-04", "<html/>")
@@ -337,8 +355,16 @@ class TestDraftReject:
         from src import storage
 
         storage.save_period(
-            [{"agent_id": "100", "name": "A", "email": "a@x", "period": "2026-04",
-              "csat": 0.85, "_raw": {}}],
+            [
+                {
+                    "agent_id": "100",
+                    "name": "A",
+                    "email": "a@x",
+                    "period": "2026-04",
+                    "csat": 0.85,
+                    "_raw": {},
+                }
+            ],
             source="csv",
         )
         draft_id = storage.queue_draft("100", "2026-04", "<html/>")
@@ -360,10 +386,22 @@ class TestApproveAll:
 
         storage.save_period(
             [
-                {"agent_id": "100", "name": "A", "email": "a@x", "period": "2026-04",
-                 "csat": 0.85, "_raw": {}},
-                {"agent_id": "200", "name": "B", "email": "b@x", "period": "2026-04",
-                 "csat": 0.75, "_raw": {}},
+                {
+                    "agent_id": "100",
+                    "name": "A",
+                    "email": "a@x",
+                    "period": "2026-04",
+                    "csat": 0.85,
+                    "_raw": {},
+                },
+                {
+                    "agent_id": "200",
+                    "name": "B",
+                    "email": "b@x",
+                    "period": "2026-04",
+                    "csat": 0.75,
+                    "_raw": {},
+                },
             ],
             source="csv",
         )
@@ -393,8 +431,16 @@ class TestSend:
         monkeypatch.setattr(dashboard, "SMTP_PASSWORD", "")
 
         storage.save_period(
-            [{"agent_id": "100", "name": "A", "email": "a@x", "period": "2026-04",
-              "csat": 0.85, "_raw": {}}],
+            [
+                {
+                    "agent_id": "100",
+                    "name": "A",
+                    "email": "a@x",
+                    "period": "2026-04",
+                    "csat": 0.85,
+                    "_raw": {},
+                }
+            ],
             source="csv",
         )
         draft_id = storage.queue_draft("100", "2026-04", "<html/>")
@@ -415,8 +461,16 @@ class TestSend:
         server = smtp_class.return_value.__enter__.return_value
 
         storage.save_period(
-            [{"agent_id": "100", "name": "A", "email": "alice@example.com", "period": "2026-04",
-              "csat": 0.85, "_raw": {}}],
+            [
+                {
+                    "agent_id": "100",
+                    "name": "A",
+                    "email": "alice@example.com",
+                    "period": "2026-04",
+                    "csat": 0.85,
+                    "_raw": {},
+                }
+            ],
             source="csv",
         )
         draft_id = storage.queue_draft("100", "2026-04", "<html>email body</html>")
@@ -444,8 +498,16 @@ class TestSend:
         smtp_class.return_value.__enter__.side_effect = smtplib.SMTPException("boom")
 
         storage.save_period(
-            [{"agent_id": "100", "name": "A", "email": "a@x", "period": "2026-04",
-              "csat": 0.85, "_raw": {}}],
+            [
+                {
+                    "agent_id": "100",
+                    "name": "A",
+                    "email": "a@x",
+                    "period": "2026-04",
+                    "csat": 0.85,
+                    "_raw": {},
+                }
+            ],
             source="csv",
         )
         draft_id = storage.queue_draft("100", "2026-04", "<html/>")
@@ -531,8 +593,14 @@ class TestPullPipelineWorker:
         mocker.patch(
             "src.fub_client.fetch_all_agents",
             return_value=[
-                {"agent_id": "100", "name": "Alice", "email": "a@x", "period": "April 2026",
-                 "csat": 0.85, "_raw": {}},
+                {
+                    "agent_id": "100",
+                    "name": "Alice",
+                    "email": "a@x",
+                    "period": "April 2026",
+                    "csat": 0.85,
+                    "_raw": {},
+                },
             ],
         )
         # Mock research to skip the network call
@@ -556,9 +624,7 @@ class TestPullPipelineWorker:
         _pull_pipeline_worker(run_id)
 
         with storage.connect() as conn:
-            row = conn.execute(
-                "SELECT status, notes FROM runs WHERE id = ?", (run_id,)
-            ).fetchone()
+            row = conn.execute("SELECT status, notes FROM runs WHERE id = ?", (run_id,)).fetchone()
         assert row["status"] == "ok"
         assert "0 agents" in row["notes"]
 
@@ -586,8 +652,14 @@ class TestPullPipelineWorker:
         mocker.patch(
             "src.fub_client.fetch_all_agents",
             return_value=[
-                {"agent_id": "100", "name": "Alice", "email": "a@x", "period": "April 2026",
-                 "csat": 0.85, "_raw": {}},
+                {
+                    "agent_id": "100",
+                    "name": "Alice",
+                    "email": "a@x",
+                    "period": "April 2026",
+                    "csat": 0.85,
+                    "_raw": {},
+                },
             ],
         )
         mocker.patch(

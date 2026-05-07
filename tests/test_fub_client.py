@@ -7,7 +7,6 @@ import pytest
 import requests
 import responses
 
-
 # ── _auth_header ──────────────────────────────────────────────────────────────
 
 
@@ -292,9 +291,13 @@ class TestFetchAllAgents:
         monkeypatch.setattr(fub_client, "FUB_API_KEY", "test-key")
         monkeypatch.setattr(fub_client, "FUB_BASE_URL", "https://api.example.com")
         monkeypatch.setattr(fub_client, "OVERRIDE_REPORT_MONTH", "2026-04")
-        monkeypatch.setattr(fub_client, "AGENTS", [
-            {"name": "Alice", "email": "alice@x.com", "fub_agent_id": "100"},
-        ])
+        monkeypatch.setattr(
+            fub_client,
+            "AGENTS",
+            [
+                {"name": "Alice", "email": "alice@x.com", "fub_agent_id": "100"},
+            ],
+        )
 
         responses.get(
             "https://api.example.com/reporting/zillow-preferred",
@@ -328,9 +331,13 @@ class TestFetchAllAgents:
         monkeypatch.setattr(fub_client, "FUB_BASE_URL", "https://api.example.com")
         monkeypatch.setattr(fub_client, "OVERRIDE_REPORT_MONTH", "2026-04")
         monkeypatch.setattr(fub_client, "FUB_MAX_RETRIES", 1)
-        monkeypatch.setattr(fub_client, "AGENTS", [
-            {"name": "Bob", "email": "bob@x.com", "fub_agent_id": "200"},
-        ])
+        monkeypatch.setattr(
+            fub_client,
+            "AGENTS",
+            [
+                {"name": "Bob", "email": "bob@x.com", "fub_agent_id": "200"},
+            ],
+        )
         mocker.patch.object(fub_client.time, "sleep")
 
         # Both endpoints 500 — should raise after retries → caught → null record

@@ -4,7 +4,6 @@ import smtplib
 
 import pytest
 
-
 # notifier imports SMTP_*, ADMIN_EMAIL at module load — tests patch the notifier
 # module's names, not config.settings's, so the function sees the patched values.
 
