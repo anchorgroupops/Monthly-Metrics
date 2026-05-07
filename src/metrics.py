@@ -12,7 +12,6 @@ changes the program.
 
 import json
 import logging
-from typing import Optional
 
 from config.settings import THRESHOLDS_FILE
 
@@ -27,12 +26,12 @@ NO_DATA = "no_data"
 
 # ── Thresholds ────────────────────────────────────────────────────────────────
 
+
 def load_thresholds() -> dict:
     """Load current thresholds from config/thresholds.json."""
     if not THRESHOLDS_FILE.exists():
         raise FileNotFoundError(
-            f"thresholds.json not found at {THRESHOLDS_FILE}. "
-            "Run: python main.py --mode research"
+            f"thresholds.json not found at {THRESHOLDS_FILE}. Run: python main.py --mode research"
         )
     with open(THRESHOLDS_FILE) as f:
         data = json.load(f)
@@ -40,19 +39,16 @@ def load_thresholds() -> dict:
     metrics = data.get("metrics", {})
     if not metrics:
         raise ValueError(
-            "thresholds.json has no metrics defined. "
-            "Run: python main.py --mode research"
+            "thresholds.json has no metrics defined. Run: python main.py --mode research"
         )
 
     missing = [k for k, m in metrics.items() if m.get("target") is None]
     if missing:
-        log.warning(
-            "Thresholds not yet set for: %s. Run --mode research first.", missing
-        )
+        log.warning("Thresholds not yet set for: %s. Run --mode research first.", missing)
     return data
 
 
-def metric_keys(thresholds: Optional[dict] = None) -> list[str]:
+def metric_keys(thresholds: dict | None = None) -> list[str]:
     """Return the current metric keys, hero first then by weight desc."""
     if thresholds is None:
         thresholds = load_thresholds()
@@ -69,9 +65,10 @@ def metric_keys(thresholds: Optional[dict] = None) -> list[str]:
 
 # ── Single-metric scoring ─────────────────────────────────────────────────────
 
+
 def score_metric(
     metric_key: str,
-    value: Optional[float],
+    value: float | None,
     threshold: dict,
 ) -> dict:
     """
@@ -127,6 +124,7 @@ def score_metric(
 
 # ── Overall status ────────────────────────────────────────────────────────────
 
+
 def overall_status(scored_metrics: list[dict]) -> str:
     """
     Weighted aggregate status across all metrics.
@@ -159,7 +157,7 @@ def overall_status_color(status_label: str) -> str:
     }.get(status_label, NO_DATA)
 
 
-def operational_readiness(scored_metrics: list[dict]) -> Optional[float]:
+def operational_readiness(scored_metrics: list[dict]) -> float | None:
     """
     Composite 0–100 readiness score across all available metrics.
 
@@ -177,15 +175,13 @@ def operational_readiness(scored_metrics: list[dict]) -> Optional[float]:
 
 # ── Full agent scoring ────────────────────────────────────────────────────────
 
+
 def score_agent(agent_data: dict, thresholds: dict) -> dict:
     """Produce a fully scored report for a single agent."""
     metrics_cfg = thresholds.get("metrics", {})
     keys = metric_keys(thresholds)
 
-    scored = {
-        key: score_metric(key, agent_data.get(key), metrics_cfg.get(key, {}))
-        for key in keys
-    }
+    scored = {key: score_metric(key, agent_data.get(key), metrics_cfg.get(key, {})) for key in keys}
 
     metrics_list = [scored[k] for k in keys]
     status_label = overall_status(metrics_list)
@@ -212,6 +208,7 @@ def score_all_agents(agents_data: list[dict]) -> list[dict]:
 
 # ── Team summary + history ────────────────────────────────────────────────────
 
+
 def team_summary(scored_agents: list[dict]) -> dict:
     """Aggregate stats for the team overview slide and dashboard."""
     if not scored_agents:
@@ -219,9 +216,7 @@ def team_summary(scored_agents: list[dict]) -> dict:
 
     status_counts = {"Preferred": 0, "At Risk": 0, "Needs Improvement": 0, "No Data": 0}
     for agent in scored_agents:
-        status_counts[agent["overall_status"]] = (
-            status_counts.get(agent["overall_status"], 0) + 1
-        )
+        status_counts[agent["overall_status"]] = status_counts.get(agent["overall_status"], 0) + 1
 
     keys = list(scored_agents[0]["metrics"].keys())
     metric_avgs = {}
@@ -298,8 +293,7 @@ def _sparkline_svg(values: list[float], width: int = 80, height: int = 24) -> st
     span = hi - lo if hi != lo else 1.0
     step = width / (len(values) - 1)
     points = " ".join(
-        f"{i * step:.1f},{height - ((v - lo) / span) * height:.1f}"
-        for i, v in enumerate(values)
+        f"{i * step:.1f},{height - ((v - lo) / span) * height:.1f}" for i, v in enumerate(values)
     )
     return (
         f'<svg xmlns="http://www.w3.org/2000/svg" width="{width}" height="{height}" '

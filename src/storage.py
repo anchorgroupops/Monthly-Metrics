@@ -15,10 +15,9 @@ from __future__ import annotations
 import json
 import logging
 import sqlite3
+from collections.abc import Iterator
 from contextlib import contextmanager
 from datetime import datetime
-from pathlib import Path
-from typing import Iterator, Optional
 
 from config.settings import BASE_DIR
 
@@ -75,6 +74,7 @@ CREATE INDEX IF NOT EXISTS idx_drafts_status ON drafts(period, status);
 
 # ── Connection management ─────────────────────────────────────────────────────
 
+
 def _ensure_db() -> None:
     DB_PATH.parent.mkdir(parents=True, exist_ok=True)
     with sqlite3.connect(DB_PATH) as conn:
@@ -94,6 +94,7 @@ def connect() -> Iterator[sqlite3.Connection]:
 
 
 # ── Period normalization ──────────────────────────────────────────────────────
+
 
 def normalize_period(period: str) -> str:
     """
@@ -115,11 +116,12 @@ def normalize_period(period: str) -> str:
 
 # ── Saving ingested data ──────────────────────────────────────────────────────
 
+
 def save_period(
     agents: list[dict],
     source: str,
-    file_path: Optional[str] = None,
-    run_id: Optional[int] = None,
+    file_path: str | None = None,
+    run_id: int | None = None,
 ) -> int:
     """
     Persist a list of normalized agent records to SQLite.
@@ -139,8 +141,16 @@ def save_period(
         raise ValueError("save_period: no agent records provided")
 
     period = normalize_period(agents[0]["period"])
-    standard_keys = {"agent_id", "name", "email", "period", "start_date",
-                     "end_date", "_raw", "_error"}
+    standard_keys = {
+        "agent_id",
+        "name",
+        "email",
+        "period",
+        "start_date",
+        "end_date",
+        "_raw",
+        "_error",
+    }
 
     with connect() as conn:
         cur = conn.cursor()
@@ -206,7 +216,8 @@ def save_period(
 
 # ── Run lifecycle (manual-pull / cron tracking) ───────────────────────────────
 
-def start_run(source: str, period: Optional[str] = None) -> int:
+
+def start_run(source: str, period: str | None = None) -> int:
     """
     Create a runs row with status='running'. Returns its id. Use for the
     manual-pull background thread and the cron pipeline so the dashboard can
@@ -223,7 +234,7 @@ def start_run(source: str, period: Optional[str] = None) -> int:
         return cur.lastrowid
 
 
-def finish_run(run_id: int, status: str, notes: Optional[str] = None) -> None:
+def finish_run(run_id: int, status: str, notes: str | None = None) -> None:
     """
     Terminal update for a run row. ``status`` is 'ok' or 'error'. If
     save_period() was called with run_id, it has already moved the row to 'ok'
@@ -239,7 +250,7 @@ def finish_run(run_id: int, status: str, notes: Optional[str] = None) -> None:
         )
 
 
-def get_active_run() -> Optional[dict]:
+def get_active_run() -> dict | None:
     """Return the currently-running run row, or None. Newest wins on ties."""
     with connect() as conn:
         row = conn.execute(
@@ -248,7 +259,7 @@ def get_active_run() -> Optional[dict]:
     return dict(row) if row else None
 
 
-def latest_run(source: Optional[str] = None) -> Optional[dict]:
+def latest_run(source: str | None = None) -> dict | None:
     """Return the most recent run, optionally filtered by source ('fub' etc)."""
     sql = "SELECT * FROM runs"
     params: list = []
@@ -262,6 +273,7 @@ def latest_run(source: Optional[str] = None) -> Optional[dict]:
 
 
 # ── Reading history ───────────────────────────────────────────────────────────
+
 
 def load_period(period: str) -> list[dict]:
     """
@@ -299,7 +311,9 @@ def load_period(period: str) -> list[dict]:
         return results
 
 
-def load_history(agent_id: str, metric_key: str, window_months: int = 3) -> list[tuple[str, Optional[float]]]:
+def load_history(
+    agent_id: str, metric_key: str, window_months: int = 3
+) -> list[tuple[str, float | None]]:
     """Return last N (period, value) rows for one agent + metric, newest first."""
     with connect() as conn:
         rows = conn.execute(
@@ -345,6 +359,7 @@ def list_periods() -> list[str]:
 
 # ── Draft approval queue ──────────────────────────────────────────────────────
 
+
 def queue_draft(agent_id: str, period: str, html: str) -> int:
     period = normalize_period(period)
     with connect() as conn:
@@ -365,7 +380,7 @@ def queue_draft(agent_id: str, period: str, html: str) -> int:
         return cur.fetchone()[0]
 
 
-def list_drafts(period: Optional[str] = None, status: Optional[str] = None) -> list[dict]:
+def list_drafts(period: str | None = None, status: str | None = None) -> list[dict]:
     sql = """
         SELECT d.id, d.agent_id, m.name, m.email, d.period, d.status,
                d.created_at, d.approved_at, d.sent_at
@@ -386,7 +401,7 @@ def list_drafts(period: Optional[str] = None, status: Optional[str] = None) -> l
         return [dict(r) for r in conn.execute(sql, params).fetchall()]
 
 
-def get_draft(draft_id: int) -> Optional[dict]:
+def get_draft(draft_id: int) -> dict | None:
     with connect() as conn:
         row = conn.execute(
             """
@@ -436,6 +451,7 @@ def approve_all(period: str) -> int:
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
+
 
 def period_label(canonical: str) -> str:
     """'2026-04' -> 'April 2026' for display."""

@@ -14,7 +14,6 @@ import json
 import logging
 import shutil
 from datetime import date
-from typing import Optional
 
 import anthropic
 
@@ -70,7 +69,7 @@ Rules:
 """.strip()
 
 
-def research_thresholds(year: Optional[str] = None) -> dict:
+def research_thresholds(year: str | None = None) -> dict:
     """
     Use Claude with web search to find current Zillow Preferred KPIs + thresholds.
 
@@ -78,7 +77,7 @@ def research_thresholds(year: Optional[str] = None) -> dict:
     Raises on API errors or unparseable responses.
     """
     if not ANTHROPIC_API_KEY:
-        raise EnvironmentError(
+        raise OSError(
             "ANTHROPIC_API_KEY is not set. Export it before running:\n"
             "  export ANTHROPIC_API_KEY=your_key_here"
         )
@@ -108,9 +107,7 @@ def research_thresholds(year: Optional[str] = None) -> dict:
 
     if result_text.startswith("```"):
         lines = result_text.splitlines()
-        result_text = "\n".join(
-            line for line in lines if not line.startswith("```")
-        ).strip()
+        result_text = "\n".join(line for line in lines if not line.startswith("```")).strip()
 
     try:
         parsed = json.loads(result_text)
@@ -122,7 +119,7 @@ def research_thresholds(year: Optional[str] = None) -> dict:
     return parsed
 
 
-def update_thresholds_file(research_results: dict, year: Optional[str] = None) -> None:
+def update_thresholds_file(research_results: dict, year: str | None = None) -> None:
     """
     Overwrite the metrics block with researched values.
 
@@ -136,9 +133,7 @@ def update_thresholds_file(research_results: dict, year: Optional[str] = None) -
     researched_metrics = research_results.get("metrics", {})
 
     if not researched_metrics:
-        raise ValueError(
-            "Research returned no metrics. Refusing to overwrite thresholds.json."
-        )
+        raise ValueError("Research returned no metrics. Refusing to overwrite thresholds.json.")
 
     new_doc = {
         "_comment": (
@@ -157,11 +152,11 @@ def update_thresholds_file(research_results: dict, year: Optional[str] = None) -
     log.info("thresholds.json updated at %s", THRESHOLDS_FILE)
 
 
-def run_research(year: Optional[str] = None) -> None:
+def run_research(year: str | None = None) -> None:
     """Top-level function called by main.py --mode research."""
     results = research_thresholds(year)
     update_thresholds_file(results, year)
-    print(f"\nThresholds updated successfully.")
+    print("\nThresholds updated successfully.")
     print(f"Source: {results.get('source_notes', 'N/A')}")
     print(f"File:   {THRESHOLDS_FILE}\n")
 

@@ -23,7 +23,6 @@ GET  /logout
 
 from __future__ import annotations
 
-import json
 import logging
 import os
 import secrets
@@ -49,7 +48,6 @@ from flask import (
 from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
 from flask_wtf.csrf import CSRFProtect
-from jinja2 import ChoiceLoader, FileSystemLoader
 from werkzeug.middleware.proxy_fix import ProxyFix
 
 from config.settings import (
@@ -168,6 +166,7 @@ def _pull_pipeline_worker(run_id: int) -> None:
         # Step 2: research is non-fatal — keep yesterday's thresholds if it fails.
         try:
             from src.threshold_researcher import run_research
+
             run_research()
         except Exception as exc:
             log.warning("Threshold research failed (continuing): %s", exc)
@@ -182,7 +181,8 @@ def _pull_pipeline_worker(run_id: int) -> None:
             storage.queue_draft(agent["agent_id"], agent["period"], html)
 
         storage.finish_run(
-            run_id, "ok",
+            run_id,
+            "ok",
             f"pulled {len(agents)}, queued {len(scored)} drafts for {period}",
         )
         log.info("Manual pull complete: run #%d", run_id)
@@ -191,9 +191,10 @@ def _pull_pipeline_worker(run_id: int) -> None:
         try:
             storage.finish_run(run_id, "error", str(exc)[:500])
         except Exception:
-            pass
+            log.exception("Failed to mark run as errored")
         try:
             from src.notifier import notify_admin_failure
+
             notify_admin_failure(
                 "Anchor Group: manual pull failed",
                 f"Run #{run_id} failed during the manual-pull pipeline.\n\n"
@@ -201,10 +202,11 @@ def _pull_pipeline_worker(run_id: int) -> None:
                 f"Check journalctl -u anchor-dashboard for the traceback.",
             )
         except Exception:
-            pass
+            log.exception("Failed to send admin failure notification")
 
 
 # ── Auth ──────────────────────────────────────────────────────────────────────
+
 
 def login_required(view):
     @wraps(view)
@@ -212,6 +214,7 @@ def login_required(view):
         if not session.get("authed"):
             return redirect(url_for("login"))
         return view(*args, **kwargs)
+
     return wrapper
 
 
@@ -221,6 +224,7 @@ def _check_password(provided: str) -> bool:
 
 
 # ── Routes ────────────────────────────────────────────────────────────────────
+
 
 def _register_routes(app: Flask, limiter: Limiter) -> None:
 
@@ -271,7 +275,7 @@ def _register_routes(app: Flask, limiter: Limiter) -> None:
         agents_data = storage.load_period(latest)
         scored = score_all_agents(agents_data) if agents_data else []
         scored.sort(
-            key=lambda a: (a["operational_readiness"] or 0),
+            key=lambda a: a["operational_readiness"] or 0,
             reverse=True,
         )
 
@@ -332,8 +336,7 @@ def _register_routes(app: Flask, limiter: Limiter) -> None:
                     file_path=file.filename,
                 )
                 flash(
-                    f"Ingested {len(agents)} agent(s) from {file.filename} "
-                    f"(run #{run_id}).",
+                    f"Ingested {len(agents)} agent(s) from {file.filename} (run #{run_id}).",
                     "success",
                 )
                 return redirect(url_for("home"))

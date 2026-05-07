@@ -3,7 +3,6 @@ Renders per-agent HTML email strings using the Jinja2 email template.
 """
 
 import logging
-from pathlib import Path
 
 from jinja2 import Environment, FileSystemLoader, select_autoescape
 

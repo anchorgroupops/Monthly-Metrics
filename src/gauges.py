@@ -17,50 +17,50 @@ Sizing classes:
 """
 
 import math
-from typing import Optional
 
 from config.settings import BRAND
 
 # ── Color map ─────────────────────────────────────────────────────────────────
 
 STATUS_COLORS = {
-    "green":   BRAND["color_green"],
-    "yellow":  BRAND["color_yellow"],
-    "red":     BRAND["color_red"],
+    "green": BRAND["color_green"],
+    "yellow": BRAND["color_yellow"],
+    "red": BRAND["color_red"],
     "no_data": "#CCCCCC",
 }
 
-TRACK_COLOR  = "#D8EAE8"   # Soft teal tint — harmonizes with Clear Water brand
-TEXT_COLOR   = BRAND["color_text"]
+TRACK_COLOR = "#D8EAE8"  # Soft teal tint — harmonizes with Clear Water brand
+TEXT_COLOR = BRAND["color_text"]
 
 # ── Size profiles ─────────────────────────────────────────────────────────────
 
 SIZES = {
     "hero": {
-        "width":        200,
-        "height":       120,
-        "cx":           100,     # arc center x
-        "cy":           108,     # arc center y (below midpoint for semicircle)
-        "radius":        82,
-        "stroke_width":  18,
-        "font_value":    26,
-        "font_label":    11,
-        "label_y_offset": 22,    # below cy
+        "width": 200,
+        "height": 120,
+        "cx": 100,  # arc center x
+        "cy": 108,  # arc center y (below midpoint for semicircle)
+        "radius": 82,
+        "stroke_width": 18,
+        "font_value": 26,
+        "font_label": 11,
+        "label_y_offset": 22,  # below cy
     },
     "secondary": {
-        "width":        130,
-        "height":        80,
-        "cx":            65,
-        "cy":            72,
-        "radius":        53,
-        "stroke_width":  13,
-        "font_value":    18,
-        "font_label":     9,
+        "width": 130,
+        "height": 80,
+        "cx": 65,
+        "cy": 72,
+        "radius": 53,
+        "stroke_width": 13,
+        "font_value": 18,
+        "font_label": 9,
         "label_y_offset": 16,
     },
 }
 
 # ── Arc math ──────────────────────────────────────────────────────────────────
+
 
 def _polar(cx: float, cy: float, r: float, angle_deg: float) -> tuple[float, float]:
     """Convert polar coordinates (angle in degrees from 3 o'clock) to Cartesian."""
@@ -79,15 +79,13 @@ def _arc_path(cx: float, cy: float, r: float, start_deg: float, end_deg: float) 
     # large-arc-flag: 1 if sweep > 180°
     sweep = (end_deg - start_deg) % 360
     large = 1 if sweep > 180 else 0
-    return (
-        f"M {x1:.3f} {y1:.3f} "
-        f"A {r:.3f} {r:.3f} 0 {large} 1 {x2:.3f} {y2:.3f}"
-    )
+    return f"M {x1:.3f} {y1:.3f} A {r:.3f} {r:.3f} 0 {large} 1 {x2:.3f} {y2:.3f}"
 
 
 # ── Value formatting ──────────────────────────────────────────────────────────
 
-def _format_value(value: Optional[float], unit: str, metric_key: str) -> str:
+
+def _format_value(value: float | None, unit: str, metric_key: str) -> str:
     """Human-readable value string for the gauge center label."""
     if value is None:
         return "N/A"
@@ -107,9 +105,10 @@ def _format_value(value: Optional[float], unit: str, metric_key: str) -> str:
 
 # ── Main gauge builder ────────────────────────────────────────────────────────
 
+
 def build_gauge(
-    value: Optional[float],
-    target: Optional[float],
+    value: float | None,
+    target: float | None,
     status: str,
     label: str,
     unit: str,
@@ -140,7 +139,7 @@ def build_gauge(
 
     # Arc spans from 180° (left) to 0° (right) — a bottom-up semicircle
     start_deg = 180.0
-    end_deg   = 0.0    # equivalent to 360°
+    end_deg = 0.0  # equivalent to 360°
 
     # Fraction filled: clamp 0–1.25. For lower-is-better metrics, invert so the
     # gauge fills more when value is *under* the target.
@@ -179,36 +178,32 @@ def build_gauge(
         f'width="{s["width"]}" height="{s["height"]}" '
         f'viewBox="0 0 {s["width"]} {s["height"]}" '
         f'role="img" aria-label="{label}: {value_str}">'
-
         # Background track
         f'<path d="{track_path}" fill="none" '
         f'stroke="{TRACK_COLOR}" stroke-width="{sw}" stroke-linecap="round" />'
-
         # Filled arc
-        f'{fill_arc}'
-
+        f"{fill_arc}"
         # Center value text
         f'<text x="{cx}" y="{cy - 4}" '
         f'text-anchor="middle" dominant-baseline="auto" '
         f'font-family="{BRAND["font_body"]}" '
         f'font-size="{s["font_value"]}" font-weight="700" '
         f'fill="{fill_color if status != "no_data" else TEXT_COLOR}">'
-        f'{value_str}</text>'
-
+        f"{value_str}</text>"
         # Metric label below arc
         f'<text x="{cx}" y="{cy + s["label_y_offset"]}" '
         f'text-anchor="middle" dominant-baseline="hanging" '
         f'font-family="{BRAND["font_body"]}" '
         f'font-size="{s["font_label"]}" '
         f'fill="{TEXT_COLOR}" opacity="0.7">'
-        f'{display_label}</text>'
-
-        f'</svg>'
+        f"{display_label}</text>"
+        f"</svg>"
     )
     return svg
 
 
 # ── Convenience wrappers ──────────────────────────────────────────────────────
+
 
 def gauge_from_scored_metric(scored: dict) -> str:
     """
@@ -240,6 +235,5 @@ def build_all_gauges(scored_agent: dict) -> dict:
     }
     """
     return {
-        key: gauge_from_scored_metric(metric)
-        for key, metric in scored_agent["metrics"].items()
+        key: gauge_from_scored_metric(metric) for key, metric in scored_agent["metrics"].items()
     }

@@ -1,3 +1,34 @@
+[project]
+name = "anchor-monthly-metrics"
+version = "0.1.0"
+description = "Anchor Group Monthly Metrics — Zillow Preferred performance reporting + monthly digest"
+requires-python = ">=3.11"
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+extend-exclude = ["data", "logs", "output", ".venv"]
+
+[tool.ruff.lint]
+# Default + import order (I), bugbear (B), security-lite (S), pyupgrade (UP).
+select = ["E", "F", "W", "I", "B", "S", "UP"]
+ignore = []
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["S101", "S105", "S106"]
+"main.py"  = ["S105"]
+
+[tool.ruff.format]
+quote-style = "double"
+
+[tool.mypy]
+python_version = "3.11"
+strict = false
+warn_return_any = true
+warn_unused_ignores = true
+ignore_missing_imports = true
+exclude = ["data", "logs", "output", ".venv"]
+
 [tool.pytest.ini_options]
 minversion = "8.0"
 testpaths = ["tests"]
@@ -11,8 +42,17 @@ addopts = [
 ]
 filterwarnings = [
     "default",
-    # anthropic/httpx may emit deprecation warnings on newer Python — keep noise down
     "ignore::DeprecationWarning",
     # FIXME(P3): real sqlite3 resource leaks in src/storage.py — close connections explicitly
     "ignore::ResourceWarning",
 ]
+
+[tool.coverage.run]
+branch = true
+source = ["src", "config", "main"]
+omit = ["*/tests/*", "*/__init__.py"]
+
+[tool.coverage.report]
+show_missing = true
+skip_covered = false
+fail_under = 0    # Raised to 80 in P1 once the test suite covers the modules.

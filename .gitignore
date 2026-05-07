@@ -29,3 +29,14 @@ build/
 # OS
 .DS_Store
 Thumbs.db
+
+# Coverage artifacts
+.coverage
+coverage.xml
+htmlcov/
+
+# Repo backup bundles (kept out-of-tree)
+data/backups/*.bundle
+
+# Stray git scratch file
+COMMIT_EDITMSG

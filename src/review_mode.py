@@ -14,18 +14,18 @@ import logging
 import re
 from pathlib import Path
 
-from config.settings import REVIEW_DIR, BRAND
-from src.email_builder import build_all_emails
+from config.settings import BRAND, REVIEW_DIR
 from src.deck_builder import build_deck
+from src.email_builder import build_all_emails
 
 log = logging.getLogger(__name__)
 
 # Status → (bg_color, text_color, icon)
 STATUS_STYLES = {
-    "Preferred":           ("#2ECC71", "#FFFFFF", "✓"),
-    "At Risk":             ("#F39C12", "#1C2B3A", "⚠"),
-    "Needs Improvement":   ("#E74C3C", "#FFFFFF", "↑"),
-    "No Data":             ("#CCCCCC", "#1C2B3A", "?"),
+    "Preferred": ("#2ECC71", "#FFFFFF", "✓"),
+    "At Risk": ("#F39C12", "#1C2B3A", "⚠"),
+    "Needs Improvement": ("#E74C3C", "#FFFFFF", "↑"),
+    "No Data": ("#CCCCCC", "#1C2B3A", "?"),
 }
 
 
@@ -49,7 +49,10 @@ def run_review(scored_agents: list[dict]) -> None:
         slug = _slugify(item["agent"]["name"])
         out_path = REVIEW_DIR / f"{slug}.html"
         out_path.write_text(item["html"], encoding="utf-8")
-        log.info("  Wrote %s", out_path.relative_to(Path.cwd()) if Path.cwd() in out_path.parents else out_path)
+        log.info(
+            "  Wrote %s",
+            out_path.relative_to(Path.cwd()) if Path.cwd() in out_path.parents else out_path,
+        )
 
     # ── 2. Team deck ──────────────────────────────────────────────────────────
     deck_html = build_deck(scored_agents)
@@ -63,12 +66,11 @@ def run_review(scored_agents: list[dict]) -> None:
     index_path.write_text(index_html, encoding="utf-8")
     log.info("  Wrote index.html")
 
-    period = scored_agents[0]["period"] if scored_agents else "Unknown"
     print(f"\n  Review files written to: {REVIEW_DIR}")
     print(f"  {len(built_emails)} agent email(s)  +  1 team deck  +  index")
-    print(f"\n  To preview, run:")
+    print("\n  To preview, run:")
     print(f"    python -m http.server 8080 --directory {REVIEW_DIR}")
-    print(f"    → http://localhost:8080\n")
+    print("    → http://localhost:8080\n")
 
 
 def _build_index(built_emails: list[dict], scored_agents: list[dict]) -> str:
@@ -89,7 +91,7 @@ def _build_index(built_emails: list[dict], scored_agents: list[dict]) -> str:
         cards.append(f"""
     <div class="card">
       <div class="card-header">
-        <span class="agent-name">{agent['name']}</span>
+        <span class="agent-name">{agent["name"]}</span>
         <span class="badge" style="background:{bg};color:{txt};">{icon} {status}</span>
       </div>
       <div class="card-body">
@@ -112,20 +114,20 @@ def _build_index(built_emails: list[dict], scored_agents: list[dict]) -> str:
   <style>
     * {{ box-sizing: border-box; margin: 0; padding: 0; }}
     body {{
-      font-family: {BRAND['font_body']};
-      background: {BRAND['color_bg']};
-      color: {BRAND['color_text']};
+      font-family: {BRAND["font_body"]};
+      background: {BRAND["color_bg"]};
+      color: {BRAND["color_text"]};
       padding: 32px 24px;
     }}
     .page-header {{
-      background: {BRAND['color_primary']};
+      background: {BRAND["color_primary"]};
       color: white;
       padding: 20px 28px;
       border-radius: 10px;
       margin-bottom: 28px;
     }}
     .page-header h1 {{
-      font-family: {BRAND['font_heading']};
+      font-family: {BRAND["font_heading"]};
       font-size: 20px;
       font-weight: 700;
       margin-bottom: 4px;
@@ -133,7 +135,7 @@ def _build_index(built_emails: list[dict], scored_agents: list[dict]) -> str:
     .page-header p {{ font-size: 13px; opacity: 0.75; }}
     .deck-link {{
       display: inline-block;
-      background: {BRAND['color_secondary']};
+      background: {BRAND["color_secondary"]};
       color: white;
       text-decoration: none;
       padding: 10px 20px;
@@ -155,7 +157,7 @@ def _build_index(built_emails: list[dict], scored_agents: list[dict]) -> str:
       overflow: hidden;
     }}
     .card-header {{
-      background: {BRAND['color_bg']};
+      background: {BRAND["color_bg"]};
       padding: 14px 16px 10px;
       border-bottom: 1px solid #E8ECEF;
       display: flex;
@@ -167,7 +169,7 @@ def _build_index(built_emails: list[dict], scored_agents: list[dict]) -> str:
     .agent-name {{
       font-size: 15px;
       font-weight: 700;
-      color: {BRAND['color_primary']};
+      color: {BRAND["color_primary"]};
     }}
     .badge {{
       font-size: 11px;
@@ -191,7 +193,7 @@ def _build_index(built_emails: list[dict], scored_agents: list[dict]) -> str:
     .pcvr-value {{
       font-size: 22px;
       font-weight: 700;
-      color: {BRAND['color_primary']};
+      color: {BRAND["color_primary"]};
     }}
     .card-footer {{
       padding: 0 16px 16px;
@@ -199,7 +201,7 @@ def _build_index(built_emails: list[dict], scored_agents: list[dict]) -> str:
     .btn-preview {{
       display: block;
       text-align: center;
-      background: {BRAND['color_primary']};
+      background: {BRAND["color_primary"]};
       color: white;
       text-decoration: none;
       padding: 9px;

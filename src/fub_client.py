@@ -11,16 +11,15 @@ import base64
 import logging
 import time
 from datetime import date, timedelta
-from typing import Optional
 
 import requests
 
 from config.settings import (
+    AGENTS,
     FUB_API_KEY,
     FUB_BASE_URL,
     FUB_MAX_RETRIES,
     FUB_TIMEOUT_SECONDS,
-    AGENTS,
     OVERRIDE_REPORT_MONTH,
 )
 
@@ -28,6 +27,7 @@ log = logging.getLogger(__name__)
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
+
 
 def _auth_header() -> dict:
     """FUB uses HTTP Basic auth with the API key as the username."""
@@ -58,7 +58,7 @@ def _report_period() -> tuple[str, str]:
     return start.isoformat(), end.isoformat()
 
 
-def _get(path: str, params: Optional[dict] = None) -> dict:
+def _get(path: str, params: dict | None = None) -> dict:
     """
     GET from FUB API with retry logic and exponential backoff.
     Raises on non-2xx after exhausting retries.
@@ -69,9 +69,7 @@ def _get(path: str, params: Optional[dict] = None) -> dict:
 
     for attempt in range(1, FUB_MAX_RETRIES + 1):
         try:
-            resp = requests.get(
-                url, headers=headers, params=params, timeout=FUB_TIMEOUT_SECONDS
-            )
+            resp = requests.get(url, headers=headers, params=params, timeout=FUB_TIMEOUT_SECONDS)
             if resp.status_code == 429:
                 retry_after = int(resp.headers.get("Retry-After", delay))
                 log.warning("Rate limited by FUB. Waiting %ds…", retry_after)
@@ -92,6 +90,7 @@ def _get(path: str, params: Optional[dict] = None) -> dict:
 
 # ── Core fetch functions ──────────────────────────────────────────────────────
 
+
 def fetch_zillow_preferred_report(agent_id: str, start_date: str, end_date: str) -> dict:
     """
     Fetch the Zillow Preferred Performance Report for a single agent.
@@ -107,7 +106,7 @@ def fetch_zillow_preferred_report(agent_id: str, start_date: str, end_date: str)
         "agentId": agent_id,
         "startDate": start_date,
         "endDate": end_date,
-        "source": "Zillow",          # Filter to Zillow-source leads only
+        "source": "Zillow",  # Filter to Zillow-source leads only
     }
 
     # Try the dedicated Zillow Preferred report endpoint first
@@ -122,7 +121,7 @@ def fetch_zillow_preferred_report(agent_id: str, start_date: str, end_date: str)
         raise
 
 
-def fetch_all_agents(period: Optional[str] = None) -> list[dict]:
+def fetch_all_agents(period: str | None = None) -> list[dict]:
     """
     Fetch and normalize Zillow Preferred metrics for every agent in AGENTS.
 
@@ -142,9 +141,8 @@ def fetch_all_agents(period: Optional[str] = None) -> list[dict]:
     }
     """
     if not FUB_API_KEY:
-        raise EnvironmentError(
-            "FUB_API_KEY is not set. Export it before running:\n"
-            "  export FUB_API_KEY=your_key_here"
+        raise OSError(
+            "FUB_API_KEY is not set. Export it before running:\n  export FUB_API_KEY=your_key_here"
         )
 
     if not AGENTS:
@@ -183,62 +181,51 @@ def _normalize(raw: dict, agent_cfg: dict, period: str, start: str, end: str) ->
     """
     # Extract with fallbacks — FUB field names to confirm with your account rep
     pCVR_raw = (
-        raw.get("predictedConversionRate")
-        or raw.get("pCVR")
-        or raw.get("conversionRatePredicted")
+        raw.get("predictedConversionRate") or raw.get("pCVR") or raw.get("conversionRatePredicted")
     )
-    pickup_raw = (
-        raw.get("pickupRate")
-        or raw.get("callPickupRate")
-        or raw.get("answerRate")
-    )
-    csat_raw = (
-        raw.get("csatScore")
-        or raw.get("csat")
-        or raw.get("satisfactionScore")
-    )
+    pickup_raw = raw.get("pickupRate") or raw.get("callPickupRate") or raw.get("answerRate")
+    csat_raw = raw.get("csatScore") or raw.get("csat") or raw.get("satisfactionScore")
     zhl_raw = (
-        raw.get("zhlTransfers")
-        or raw.get("zillowHomeLoanTransfers")
-        or raw.get("transferCount")
+        raw.get("zhlTransfers") or raw.get("zillowHomeLoanTransfers") or raw.get("transferCount")
     )
 
     return {
-        "agent_id":      agent_cfg["fub_agent_id"],
-        "name":          agent_cfg["name"],
-        "email":         agent_cfg["email"],
-        "period":        period,
-        "start_date":    start,
-        "end_date":      end,
-        "pCVR":          float(pCVR_raw) if pCVR_raw is not None else None,
-        "pickup_rate":   float(pickup_raw) if pickup_raw is not None else None,
-        "csat":          float(csat_raw) if csat_raw is not None else None,
+        "agent_id": agent_cfg["fub_agent_id"],
+        "name": agent_cfg["name"],
+        "email": agent_cfg["email"],
+        "period": period,
+        "start_date": start,
+        "end_date": end,
+        "pCVR": float(pCVR_raw) if pCVR_raw is not None else None,
+        "pickup_rate": float(pickup_raw) if pickup_raw is not None else None,
+        "csat": float(csat_raw) if csat_raw is not None else None,
         "zhl_transfers": int(zhl_raw) if zhl_raw is not None else None,
-        "_raw":          raw,
+        "_raw": raw,
     }
 
 
 def _null_record(agent_cfg: dict, period: str, start: str, end: str) -> dict:
     """Return a placeholder record when the API call fails for an agent."""
     return {
-        "agent_id":      agent_cfg["fub_agent_id"],
-        "name":          agent_cfg["name"],
-        "email":         agent_cfg["email"],
-        "period":        period,
-        "start_date":    start,
-        "end_date":      end,
-        "pCVR":          None,
-        "pickup_rate":   None,
-        "csat":          None,
+        "agent_id": agent_cfg["fub_agent_id"],
+        "name": agent_cfg["name"],
+        "email": agent_cfg["email"],
+        "period": period,
+        "start_date": start,
+        "end_date": end,
+        "pCVR": None,
+        "pickup_rate": None,
+        "csat": None,
         "zhl_transfers": None,
-        "_raw":          {},
-        "_error":        True,
+        "_raw": {},
+        "_error": True,
     }
 
 
 # ── Mock data for local testing ───────────────────────────────────────────────
 
-def mock_agents(period: Optional[str] = None) -> list[dict]:
+
+def mock_agents(period: str | None = None) -> list[dict]:
     """
     Returns synthetic agent data for Review Mode testing without a live API key.
     Run: python main.py --mode review --mock
@@ -246,18 +233,42 @@ def mock_agents(period: Optional[str] = None) -> list[dict]:
     period_label = period or "March 2026"
     return [
         {
-            "agent_id": "mock-001", "name": "Alex Rivera", "email": "alex@example.com",
-            "period": period_label, "start_date": "2026-03-01", "end_date": "2026-03-31",
-            "pCVR": 0.038, "pickup_rate": 0.91, "csat": 4.7, "zhl_transfers": 5, "_raw": {},
+            "agent_id": "mock-001",
+            "name": "Alex Rivera",
+            "email": "alex@example.com",
+            "period": period_label,
+            "start_date": "2026-03-01",
+            "end_date": "2026-03-31",
+            "pCVR": 0.038,
+            "pickup_rate": 0.91,
+            "csat": 4.7,
+            "zhl_transfers": 5,
+            "_raw": {},
         },
         {
-            "agent_id": "mock-002", "name": "Jordan Lee", "email": "jordan@example.com",
-            "period": period_label, "start_date": "2026-03-01", "end_date": "2026-03-31",
-            "pCVR": 0.021, "pickup_rate": 0.74, "csat": 4.1, "zhl_transfers": 2, "_raw": {},
+            "agent_id": "mock-002",
+            "name": "Jordan Lee",
+            "email": "jordan@example.com",
+            "period": period_label,
+            "start_date": "2026-03-01",
+            "end_date": "2026-03-31",
+            "pCVR": 0.021,
+            "pickup_rate": 0.74,
+            "csat": 4.1,
+            "zhl_transfers": 2,
+            "_raw": {},
         },
         {
-            "agent_id": "mock-003", "name": "Morgan Chen", "email": "morgan@example.com",
-            "period": period_label, "start_date": "2026-03-01", "end_date": "2026-03-31",
-            "pCVR": 0.015, "pickup_rate": 0.61, "csat": 3.8, "zhl_transfers": 1, "_raw": {},
+            "agent_id": "mock-003",
+            "name": "Morgan Chen",
+            "email": "morgan@example.com",
+            "period": period_label,
+            "start_date": "2026-03-01",
+            "end_date": "2026-03-31",
+            "pCVR": 0.015,
+            "pickup_rate": 0.61,
+            "csat": 3.8,
+            "zhl_transfers": 1,
+            "_raw": {},
         },
     ]

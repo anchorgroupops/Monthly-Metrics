@@ -16,9 +16,9 @@ from __future__ import annotations
 import csv
 import json
 import logging
+from collections.abc import Iterable
 from datetime import datetime
 from pathlib import Path
-from typing import Iterable
 
 from src.metrics import load_thresholds, metric_keys
 
@@ -28,6 +28,7 @@ REQUIRED_FIXED_COLUMNS = ("agent_id", "name", "email", "period")
 
 
 # ── Public API ────────────────────────────────────────────────────────────────
+
 
 def parse_file(path: str | Path) -> list[dict]:
     """
@@ -49,6 +50,7 @@ def parse_file(path: str | Path) -> list[dict]:
 
 
 # ── CSV ───────────────────────────────────────────────────────────────────────
+
 
 def _parse_csv(path: Path) -> list[dict]:
     with open(path, newline="", encoding="utf-8-sig") as f:
@@ -84,6 +86,7 @@ def _parse_json(path: Path) -> list[dict]:
 
 # ── Validation + normalization ────────────────────────────────────────────────
 
+
 def _validate_columns(columns: Iterable[str]) -> None:
     cols = {c.strip() for c in columns}
     missing_fixed = [c for c in REQUIRED_FIXED_COLUMNS if c not in cols]
@@ -102,10 +105,11 @@ def _validate_columns(columns: Iterable[str]) -> None:
             "Run `python main.py --mode research` if Zillow's program changed."
         )
 
-    unknown = [c for c in cols
-               if c not in REQUIRED_FIXED_COLUMNS
-               and c not in expected_metrics
-               and not c.startswith("_")]
+    unknown = [
+        c
+        for c in cols
+        if c not in REQUIRED_FIXED_COLUMNS and c not in expected_metrics and not c.startswith("_")
+    ]
     if unknown:
         log.warning("Ignoring unknown columns: %s", ", ".join(sorted(unknown)))
 

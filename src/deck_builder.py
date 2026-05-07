@@ -5,7 +5,7 @@ Renders the Reveal.js team slide deck using the Jinja2 deck template.
 import json
 import logging
 
-from jinja2 import Environment, FileSystemLoader, select_autoescape
+from jinja2 import Environment, FileSystemLoader
 
 from config.settings import BRAND, TEMPLATES_DIR, THRESHOLDS_FILE
 from src.gauges import build_all_gauges
@@ -21,7 +21,7 @@ def _get_env():
     if _env is None:
         _env = Environment(
             loader=FileSystemLoader(str(TEMPLATES_DIR)),
-            autoescape=False,   # SVG + HTML in template — disable auto-escaping
+            autoescape=False,  # noqa: S701 — deck embeds inline SVG gauge markup; input is admin-controlled scored data only
         )
     return _env
 
@@ -42,10 +42,7 @@ def build_deck(scored_agents: list[dict]) -> str:
     summary = team_summary(scored_agents)
 
     # Build gauges for every agent (dict keyed by agent_id → {metric: svg})
-    gauges_by_agent = {
-        agent["agent_id"]: build_all_gauges(agent)
-        for agent in scored_agents
-    }
+    gauges_by_agent = {agent["agent_id"]: build_all_gauges(agent) for agent in scored_agents}
 
     # Load thresholds for the team averages slide
     thresholds = {}

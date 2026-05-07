@@ -13,5 +13,13 @@ This project handles monthly metrics for Anchor Group.
 ## Repository Setup
 
 - **Source**: `https://github.com/anchorgroupops/Monthly-Metrics`
-- **Main Branch**: `claude/notebooklm-mcp-access-js94b` (Detected as default)
-- **Onboarding Strategy**: Add remote, pull, and verify structure.
+- **Main Branch**: `main` (default; protected — see `.github/workflows/ci.yml`)
+- **Onboarding Strategy**: `git clone`, run `scripts/install.sh`, verify `pytest` green.
+
+### Branch model
+
+- `main` — stable, deployed. Only fast-forward merges from PRs that pass CI.
+- `harden/p<N>-<topic>` — short-lived implementation branches per phase
+  (see `docs/superpowers/specs/2026-05-07-audit-harden-deploy-design.md`).
+- Archived ancestors: `archive/claude/{add-claude-documentation-WkXo8,agent-dashboard-metrics-q9fTw,analyze-test-coverage-1y5b6,analyze-test-coverage-JLXX4,analyze-test-coverage-pKsDU,implement-todo-hxs9O,notebooklm-mcp-access-js94b,zillow-digest-system-OGMIF}`
+  preserved as tags for forensic reference; not for active development.
