@@ -1,0 +1,18 @@
+[tool.pytest.ini_options]
+minversion = "8.0"
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]
+addopts = [
+    "-ra",
+    "--strict-markers",
+    "--strict-config",
+]
+filterwarnings = [
+    "default",
+    # anthropic/httpx may emit deprecation warnings on newer Python — keep noise down
+    "ignore::DeprecationWarning",
+    # FIXME(P3): real sqlite3 resource leaks in src/storage.py — close connections explicitly
+    "ignore::ResourceWarning",
+]
