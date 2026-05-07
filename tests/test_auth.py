@@ -39,12 +39,26 @@ class TestIssueMagicLink:
         assert "/verify?token=" in body
 
     def test_smtp_credentials_missing_propagates(self, alice, mocker):
+        mocker.patch("src.auth.DEV_LOG_MAGIC_LINK", False)
         mocker.patch(
             "src.auth.send_html",
             side_effect=SMTPCredentialsMissing("nope"),
         )
         with pytest.raises(SMTPCredentialsMissing):
             auth.issue_magic_link("alice@x")
+
+    def test_dev_log_swallows_smtp_error_and_logs_url(self, alice, mocker, caplog):
+        # With the dev flag on, the URL should be logged instead of raising —
+        # so localhost bring-up works without SMTP creds.
+        mocker.patch("src.auth.DEV_LOG_MAGIC_LINK", True)
+        mocker.patch(
+            "src.auth.send_html",
+            side_effect=SMTPCredentialsMissing("nope"),
+        )
+        with caplog.at_level("WARNING", logger="src.auth"):
+            ok = auth.issue_magic_link("alice@x")
+        assert ok is True
+        assert any("/verify?token=" in r.message for r in caplog.records)
 
 
 class TestVerifyToken:

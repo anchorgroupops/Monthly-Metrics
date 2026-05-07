@@ -16,6 +16,7 @@ from __future__ import annotations
 import json
 import logging
 from datetime import datetime, timedelta
+from urllib.parse import urlsplit
 
 from fastapi import APIRouter, Form, Request
 from fastapi.responses import HTMLResponse, RedirectResponse, Response
@@ -25,6 +26,7 @@ from config.settings import (
     DASHBOARD_TREND_MONTHS,
     SESSION_COOKIE_NAME,
     SESSION_TTL_DAYS,
+    WEB_BASE_URL,
 )
 from src import auth, storage
 from src.gauges import build_all_gauges
@@ -47,14 +49,46 @@ def _render(request: Request, template: str, **ctx) -> HTMLResponse:
     return HTMLResponse(tmpl.render(**ctx))
 
 
+def _cookie_is_secure() -> bool:
+    """
+    Browsers refuse `Set-Cookie; Secure` over plain HTTP, which would make
+    the magic-link flow unable to set the session cookie during localhost
+    development. Derive the flag from the configured public URL scheme so
+    production (https://...) gets Secure and dev (http://localhost) doesn't.
+    """
+    return urlsplit(WEB_BASE_URL).scheme == "https"
+
+
 def _session_cookie_kwargs() -> dict:
     return {
         "key": SESSION_COOKIE_NAME,
         "httponly": True,
-        "secure": True,
+        "secure": _cookie_is_secure(),
         "samesite": "lax",
         "max_age": SESSION_TTL_DAYS * 24 * 3600,
     }
+
+
+_JSON_SCRIPT_ESCAPES = {
+    ord("<"):  "\\u003c",
+    ord(">"):  "\\u003e",
+    ord("&"):  "\\u0026",
+    ord(" "): "\\u2028",
+    ord(" "): "\\u2029",
+}
+
+
+def _safe_script_json(payload) -> str:
+    """
+    JSON-encode a payload safely for inclusion inside an HTML <script> tag.
+
+    `json.dumps` does not escape `</script>`, HTML comment tokens, or the JS
+    line/paragraph separators (U+2028/2029). Encoding them as \\uXXXX keeps the
+    output a valid JSON literal while preventing it from breaking out of the
+    surrounding script element if a metric label or period ever contained
+    those characters.
+    """
+    return json.dumps(payload).translate(_JSON_SCRIPT_ESCAPES)
 
 
 # ── Auth gate ─────────────────────────────────────────────────────────────────
@@ -73,11 +107,16 @@ def login_form(request: Request):
 
 @router.post("/login", include_in_schema=False)
 async def login_submit(request: Request, email: str = Form(...)):
+    import smtplib
+
+    from src.mailer import SMTPCredentialsMissing
+
     try:
         auth.issue_magic_link(email)
-    except Exception as exc:  # surfacing SMTP issues to the operator log only
-        log.exception("Failed to issue magic link: %s", exc)
-    # Same response either way — no email enumeration.
+    except (SMTPCredentialsMissing, smtplib.SMTPException) as exc:
+        # Don't reveal SMTP problems to the user — log for operators and still
+        # render the same page (no email enumeration either way).
+        log.error("Magic-link delivery failed for %s: %s", email, exc)
     return _render(request, "verify_sent.html.j2", brand=BRAND, email=email)
 
 
@@ -142,7 +181,7 @@ def dashboard(request: Request):
         empty=False,
         scored=scored,
         gauges=gauges,
-        trend_payload=json.dumps(trend_payload),
+        trend_payload=_safe_script_json(trend_payload),
         as_of=snapshot["as_of_date"],
         next_refresh=_next_refresh_label(),
     )

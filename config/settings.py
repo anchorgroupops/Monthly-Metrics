@@ -117,3 +117,10 @@ SESSION_COOKIE_NAME = "anchor_session"
 
 # How many months of history the dashboard shows in trend charts.
 DASHBOARD_TREND_MONTHS = 6
+
+# When SMTP credentials are missing AND this flag is on, the magic-link URL is
+# written to the server log instead of emailed. Off by default so production
+# can't accidentally short-circuit auth — only turn this on for local dev.
+DEV_LOG_MAGIC_LINK = os.environ.get("DEV_LOG_MAGIC_LINK", "").lower() in (
+    "1", "true", "yes"
+)

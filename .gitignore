@@ -7,8 +7,10 @@ data/
 # Environment & secrets
 .env
 config/secrets.py
-config/agents.csv          # roster — contains real names + emails
-deploy/cloudflared.yml     # rendered tunnel config (carries credentials)
+# Roster — contains real names + emails
+config/agents.csv
+# Rendered tunnel config (carries credentials)
+deploy/cloudflared.yml
 
 # Python
 __pycache__/

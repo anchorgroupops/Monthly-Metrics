@@ -15,6 +15,7 @@ from __future__ import annotations
 import logging
 
 from config.settings import (
+    DEV_LOG_MAGIC_LINK,
     MAGIC_LINK_TTL_MINUTES,
     SESSION_COOKIE_NAME,
     SESSION_TTL_DAYS,
@@ -78,10 +79,15 @@ def issue_magic_link(email: str) -> bool:
     try:
         send_html(agent["email"], MAGIC_LINK_SUBJECT, _email_html(magic_url))
     except SMTPCredentialsMissing:
+        if DEV_LOG_MAGIC_LINK:
+            log.warning(
+                "DEV mode — SMTP not configured. Magic link for %s:\n  %s",
+                agent["email"], magic_url,
+            )
+            return True
         log.error(
             "Cannot send magic link — SMTP credentials missing. "
-            "Magic URL was: %s",
-            magic_url,
+            "Set DEV_LOG_MAGIC_LINK=1 to log the URL instead.",
         )
         raise
     log.info("Sent magic link to %s", agent["email"])
