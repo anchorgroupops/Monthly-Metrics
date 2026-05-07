@@ -1,0 +1,25 @@
+{% extends "base.html.j2" %}
+{% block title %}Sign in — The Anchor Group{% endblock %}
+{% block content %}
+<div class="card" style="max-width:440px;margin:80px auto;">
+  <h1 style="font-size:22px;color:{{ brand.color_primary }};margin-bottom:8px;">
+    Sign in
+  </h1>
+  <p style="font-size:14px;opacity:0.7;margin-bottom:22px;">
+    We'll email you a one-time link.
+  </p>
+  {% if error %}
+    <div style="background:#FEE;color:#A23;padding:10px 14px;border-radius:6px;margin-bottom:14px;font-size:13px;">
+      {{ error }}
+    </div>
+  {% endif %}
+  <form method="POST" action="/login">
+    <label for="email" style="font-size:13px;font-weight:600;display:block;margin-bottom:6px;">
+      Work email
+    </label>
+    <input type="email" name="email" id="email" required autocomplete="email"
+           style="width:100%;padding:11px 14px;border:1px solid #DDD;border-radius:7px;font-size:15px;margin-bottom:18px;">
+    <button class="btn" type="submit" style="width:100%;">Email me a sign-in link</button>
+  </form>
+</div>
+{% endblock %}

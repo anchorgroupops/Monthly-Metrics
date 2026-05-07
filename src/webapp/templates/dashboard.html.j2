@@ -1,0 +1,176 @@
+{% extends "base.html.j2" %}
+{% block title %}{{ agent.name }} — Dashboard{% endblock %}
+
+{% block head_extra %}
+<style>
+  .gauges {
+    display: grid;
+    grid-template-columns: 1.5fr 1fr 1fr 1fr;
+    gap: 16px;
+    margin-bottom: 24px;
+  }
+  .gauge-card { display:flex; align-items:center; justify-content:center; }
+  .trend-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+    gap: 18px;
+  }
+  .trend-card h3 {
+    font-size: 14px;
+    font-weight: 700;
+    color: {{ brand.color_primary }};
+    margin-bottom: 10px;
+  }
+  .empty {
+    background: #fff;
+    border-radius: 10px;
+    padding: 48px 24px;
+    text-align: center;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.07);
+  }
+  .empty h2 { color: {{ brand.color_primary }}; font-size: 22px; margin-bottom: 10px; }
+  .pill-Preferred { background: #2ECC71; color: #fff; }
+  .pill-AtRisk { background: #F0A500; color: #1A1A1A; }
+  .pill-NeedsImprovement { background: #E05C4B; color: #fff; }
+  .pill-NoData { background: #CCC; color: #1A1A1A; }
+  @media (max-width: 720px) {
+    .gauges { grid-template-columns: 1fr 1fr; }
+  }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="header">
+  <div>
+    <h1>{{ agent.name }}</h1>
+    {% if scored %}
+      <div class="meta">
+        Period {{ scored.period }}
+        {% if as_of %} · last refreshed {{ as_of }}{% endif %}
+      </div>
+    {% endif %}
+  </div>
+  <div style="display:flex;gap:10px;align-items:center;">
+    {% if scored %}
+      {% set status_class = 'pill-' ~ scored.overall_status|replace(' ', '') %}
+      <span class="pill {{ status_class }}">{{ scored.overall_status }}</span>
+    {% endif %}
+    <form method="POST" action="/logout" style="margin:0;">
+      <button class="btn ghost" type="submit">Sign out</button>
+    </form>
+  </div>
+</div>
+
+{% if empty %}
+  <div class="empty">
+    <h2>No data yet</h2>
+    <p style="opacity:0.7;font-size:14px;">
+      Your dashboard will populate after the next nightly sync.
+    </p>
+  </div>
+{% else %}
+  <div class="gauges">
+    <div class="card gauge-card">{{ gauges.pCVR | safe }}</div>
+    <div class="card gauge-card">{{ gauges.pickup_rate | safe }}</div>
+    <div class="card gauge-card">{{ gauges.csat | safe }}</div>
+    <div class="card gauge-card">{{ gauges.zhl_transfers | safe }}</div>
+  </div>
+
+  <h2 style="font-size:16px;margin-bottom:14px;color:{{ brand.color_primary }};">
+    Trends — last 6 months
+  </h2>
+  <div class="trend-grid">
+    {% for key in ['pCVR', 'pickup_rate', 'csat', 'zhl_transfers'] %}
+      <div class="card trend-card">
+        <h3>{{ scored.metrics[key].label }}</h3>
+        <canvas data-metric="{{ key }}" height="180"></canvas>
+      </div>
+    {% endfor %}
+  </div>
+
+  <p class="footer-note">
+    Data refreshes nightly · next refresh approximately {{ next_refresh }}
+  </p>
+{% endif %}
+
+<script type="application/json" id="trend-data">{{ trend_payload | safe }}</script>
+{% endblock %}
+
+{% block scripts %}
+{% if not empty %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<script>
+(function () {
+  const raw = document.getElementById('trend-data').textContent;
+  const payload = raw ? JSON.parse(raw) : {labels: [], metrics: {}};
+
+  const accent = "{{ brand.color_primary }}";
+  const target = "{{ brand.color_secondary }}";
+
+  function fmt(value, unit) {
+    if (value === null || value === undefined) return null;
+    if (unit === 'percent') return (value * 100).toFixed(1) + '%';
+    if (unit === 'score')   return value.toFixed(1);
+    return value;
+  }
+
+  document.querySelectorAll('canvas[data-metric]').forEach(function (el) {
+    const key = el.dataset.metric;
+    const m = payload.metrics[key];
+    if (!m) return;
+
+    const datasets = [
+      {
+        label: m.label,
+        data: m.values,
+        borderColor: accent,
+        backgroundColor: accent + '22',
+        tension: 0.3,
+        pointRadius: 4,
+        spanGaps: true,
+      },
+    ];
+    if (m.target !== null && m.target !== undefined) {
+      datasets.push({
+        label: 'Target',
+        data: payload.labels.map(function () { return m.target; }),
+        borderColor: target,
+        borderDash: [6, 4],
+        pointRadius: 0,
+        fill: false,
+      });
+    }
+
+    new Chart(el.getContext('2d'), {
+      type: 'line',
+      data: { labels: payload.labels, datasets: datasets },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+          legend: { display: false },
+          tooltip: {
+            callbacks: {
+              label: function (ctx) {
+                const v = ctx.parsed.y;
+                const f = fmt(v, m.unit);
+                return ctx.dataset.label + ': ' + (f === null ? 'N/A' : f);
+              },
+            },
+          },
+        },
+        scales: {
+          y: {
+            beginAtZero: m.unit !== 'score',
+            ticks: {
+              callback: function (v) { return fmt(v, m.unit); },
+            },
+          },
+        },
+      },
+    });
+  });
+})();
+</script>
+{% endif %}
+{% endblock %}

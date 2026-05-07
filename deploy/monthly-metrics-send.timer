@@ -1,0 +1,12 @@
+[Unit]
+Description=Monthly email send (1st of the month at 08:00 local)
+Requires=monthly-metrics-send.service
+
+[Timer]
+OnCalendar=*-*-01 08:00:00
+RandomizedDelaySec=10min
+Persistent=true
+Unit=monthly-metrics-send.service
+
+[Install]
+WantedBy=timers.target

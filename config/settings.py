@@ -36,17 +36,31 @@ EMAIL_FROM_ADDRESS = os.environ.get("EMAIL_FROM", SMTP_USER)
 EMAIL_SUBJECT_TEMPLATE = "Your {month} Performance Report — The Anchor Group"
 
 # ── Agent Roster ──────────────────────────────────────────────────────────────
-# Each entry: fub_agent_id must match the ID in Follow Up Boss.
-# Set fub_agent_id to None to skip API fetch and use mock data (for testing).
-AGENTS = [
-    # {
-    #     "name": "Jane Smith",
-    #     "email": "jane@anchorgroup.com",
-    #     "fub_agent_id": "12345",
-    # },
-    # Add your agents here. This list is intentionally left empty so you can
-    # populate it without risk of committing real agent data.
-]
+# Roster lives in config/agents.csv (gitignored). Columns:
+#   name, email, fub_agent_id, active
+# Falls back to an empty list when the file is absent.
+ROSTER_FILE = CONFIG_DIR / "agents.csv"
+
+
+def _load_agents_from_csv() -> list[dict]:
+    if not ROSTER_FILE.exists():
+        return []
+    import csv
+    out: list[dict] = []
+    with ROSTER_FILE.open(newline="", encoding="utf-8") as f:
+        for row in csv.DictReader(f):
+            active = (row.get("active") or "1").strip().lower()
+            if active in ("0", "false", "no"):
+                continue
+            out.append({
+                "name": (row.get("name") or "").strip(),
+                "email": (row.get("email") or "").strip().lower(),
+                "fub_agent_id": (row.get("fub_agent_id") or "").strip() or None,
+            })
+    return [a for a in out if a["name"] and a["email"]]
+
+
+AGENTS = _load_agents_from_csv()
 
 # ── Brand (placeholder — will be updated from brand template) ─────────────────
 BRAND = {
@@ -84,3 +98,22 @@ BRAND = {
 # The system auto-detects the prior calendar month at runtime.
 # Override here only if you need to rerun a specific period.
 OVERRIDE_REPORT_MONTH = None   # e.g. "2026-03" or None for auto
+
+# ── Dashboard / web app ───────────────────────────────────────────────────────
+DATA_DIR = BASE_DIR / "data"
+DATABASE_PATH = Path(os.environ.get("METRICS_DB_PATH", DATA_DIR / "metrics.db"))
+
+# Public URL the magic-link emails point at. Set this on the Pi to the
+# Cloudflare-Tunnel hostname (e.g. https://metrics.anchorgroup.com).
+WEB_BASE_URL = os.environ.get("WEB_BASE_URL", "http://localhost:8081").rstrip("/")
+
+# Used to sign session cookies and magic-link tokens. MUST be set in production.
+# A random default lets tests and `--mock` runs work without env config.
+SECRET_KEY = os.environ.get("SECRET_KEY", "dev-only-not-for-prod-change-me")
+
+MAGIC_LINK_TTL_MINUTES = int(os.environ.get("MAGIC_LINK_TTL_MINUTES", "15"))
+SESSION_TTL_DAYS = int(os.environ.get("SESSION_TTL_DAYS", "30"))
+SESSION_COOKIE_NAME = "anchor_session"
+
+# How many months of history the dashboard shows in trend charts.
+DASHBOARD_TREND_MONTHS = 6

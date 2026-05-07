@@ -1,0 +1,12 @@
+[Unit]
+Description=Daily FUB sync (06:00 local)
+Requires=monthly-metrics-sync.service
+
+[Timer]
+OnCalendar=*-*-* 06:00:00
+RandomizedDelaySec=15min
+Persistent=true
+Unit=monthly-metrics-sync.service
+
+[Install]
+WantedBy=timers.target

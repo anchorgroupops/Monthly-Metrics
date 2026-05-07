@@ -57,3 +57,12 @@ def agent_raw() -> dict:
         "zhl_transfers": 4,
         "_raw": {},
     }
+
+
+@pytest.fixture
+def tmp_db(tmp_path):
+    """Isolated SQLite database for storage / webapp tests."""
+    from src import storage
+    db_path = tmp_path / "metrics.db"
+    storage.init_schema(db_path=db_path)
+    return db_path

@@ -47,7 +47,7 @@ class TestFilterAgent:
 
 class TestSendEmails:
     def test_dry_run_does_not_open_smtp_connection(self, mocker, capsys):
-        smtp = mocker.patch("main.smtplib.SMTP")
+        smtp = mocker.patch("src.mailer.smtplib.SMTP")
         emails = [
             {"agent": {"name": "Alice", "email": "a@a", "period": "March 2026"},
              "html": "<html/>"},
@@ -71,9 +71,11 @@ class TestSendEmails:
     def test_sends_via_smtp_when_credentials_present(self, mocker):
         mocker.patch("main.SMTP_USER", "user")
         mocker.patch("main.SMTP_PASSWORD", "pw")
-        mocker.patch("main.SMTP_HOST", "smtp.example.com")
-        mocker.patch("main.SMTP_PORT", 587)
-        smtp_class = mocker.patch("main.smtplib.SMTP")
+        mocker.patch("src.mailer.SMTP_USER", "user")
+        mocker.patch("src.mailer.SMTP_PASSWORD", "pw")
+        mocker.patch("src.mailer.SMTP_HOST", "smtp.example.com")
+        mocker.patch("src.mailer.SMTP_PORT", 587)
+        smtp_class = mocker.patch("src.mailer.smtplib.SMTP")
         server = smtp_class.return_value.__enter__.return_value
 
         emails = [

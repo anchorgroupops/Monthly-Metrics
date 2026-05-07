@@ -10,5 +10,11 @@ Jinja2>=3.1.4
 # Claude API (threshold researcher)
 anthropic>=0.40.0
 
+# Dashboard web app
+fastapi>=0.115.0
+uvicorn[standard]>=0.30.0
+python-multipart>=0.0.9    # required for FastAPI Form fields
+itsdangerous>=2.2.0        # signed tokens (defense in depth on session cookies)
+
 # (Optional) Load env vars from a .env file during local development
 python-dotenv>=1.0.0

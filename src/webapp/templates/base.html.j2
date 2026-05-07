@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1.0">
+  <title>{% block title %}Anchor Group{% endblock %}</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: {{ brand.font_body }};
+      background: {{ brand.color_bg }};
+      color: {{ brand.color_text }};
+      min-height: 100vh;
+      padding: 32px 24px;
+    }
+    .wrap { max-width: 1080px; margin: 0 auto; }
+    h1, h2, h3 { font-family: {{ brand.font_heading }}; font-weight: 400; }
+    a { color: {{ brand.color_primary }}; }
+    .card {
+      background: #fff;
+      border-radius: 10px;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.07);
+      padding: 24px;
+    }
+    .header {
+      background: {{ brand.color_primary }};
+      color: #fff;
+      padding: 22px 28px;
+      border-radius: 10px;
+      margin-bottom: 24px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    .header h1 { font-size: 22px; }
+    .header .meta { font-size: 13px; opacity: 0.85; }
+    .pill {
+      display: inline-block;
+      padding: 4px 12px;
+      border-radius: 14px;
+      font-size: 12px;
+      font-weight: 700;
+      letter-spacing: 0.3px;
+    }
+    .btn {
+      background: {{ brand.color_primary }};
+      color: #fff;
+      border: 0;
+      padding: 11px 22px;
+      border-radius: 7px;
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+      text-decoration: none;
+      display: inline-block;
+    }
+    .btn:hover { opacity: 0.9; }
+    .btn.ghost {
+      background: transparent;
+      color: #fff;
+      border: 1px solid rgba(255,255,255,0.5);
+    }
+    .footer-note {
+      margin-top: 32px;
+      font-size: 12px;
+      opacity: 0.55;
+      text-align: center;
+    }
+  </style>
+  {% block head_extra %}{% endblock %}
+</head>
+<body>
+  <div class="wrap">
+    {% block content %}{% endblock %}
+  </div>
+  {% block scripts %}{% endblock %}
+</body>
+</html>

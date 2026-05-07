@@ -1,9 +1,14 @@
 # Output (local preview only — never commit)
 output/
 
+# Dashboard runtime data (SQLite DB, etc.)
+data/
+
 # Environment & secrets
 .env
 config/secrets.py
+config/agents.csv          # roster — contains real names + emails
+deploy/cloudflared.yml     # rendered tunnel config (carries credentials)
 
 # Python
 __pycache__/

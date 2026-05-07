@@ -1,0 +1,16 @@
+[Unit]
+Description=Anchor Group Monthly Metrics — monthly email send (1st of the month)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=monthly-metrics
+Group=monthly-metrics
+WorkingDirectory=/opt/monthly-metrics
+EnvironmentFile=/etc/monthly-metrics.env
+ExecStart=/opt/monthly-metrics/venv/bin/python main.py --mode send
+NoNewPrivileges=true
+ProtectSystem=full
+ProtectHome=true
+PrivateTmp=true

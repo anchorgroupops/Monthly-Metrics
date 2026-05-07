@@ -1,0 +1,28 @@
+# Cloudflare Tunnel config — copy to /etc/cloudflared/config.yml on the Pi.
+#
+# Setup once:
+#   sudo apt install cloudflared
+#   cloudflared tunnel login                 # opens browser to authorize
+#   cloudflared tunnel create monthly-metrics
+#   sudo cloudflared service install
+#
+# Cloudflare will print a tunnel ID like a1b2c3d4-... — paste it below as
+# `tunnel:` and adjust `credentials-file` to match the path it created (usually
+# ~/.cloudflared/<tunnel-id>.json).
+#
+# Then point a DNS record at the tunnel:
+#   cloudflared tunnel route dns monthly-metrics metrics.<your-domain>
+#
+# Restart the service:
+#   sudo systemctl restart cloudflared
+
+tunnel: REPLACE-WITH-TUNNEL-ID
+credentials-file: /home/monthly-metrics/.cloudflared/REPLACE-WITH-TUNNEL-ID.json
+
+ingress:
+  - hostname: metrics.example.com
+    service: http://127.0.0.1:8081
+    originRequest:
+      noTLSVerify: false
+      connectTimeout: 30s
+  - service: http_status:404

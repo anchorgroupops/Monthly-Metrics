@@ -1,0 +1,25 @@
+[Unit]
+Description=Anchor Group Monthly Metrics — dashboard web service
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=monthly-metrics
+Group=monthly-metrics
+WorkingDirectory=/opt/monthly-metrics
+EnvironmentFile=/etc/monthly-metrics.env
+ExecStart=/opt/monthly-metrics/venv/bin/uvicorn src.webapp.app:app \
+    --host 127.0.0.1 \
+    --port 8081 \
+    --proxy-headers \
+    --forwarded-allow-ips=127.0.0.1
+Restart=on-failure
+RestartSec=5
+NoNewPrivileges=true
+ProtectSystem=full
+ProtectHome=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

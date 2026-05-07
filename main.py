@@ -6,26 +6,20 @@ Usage:
   python main.py --mode research              # Update thresholds via AI web research
   python main.py --mode review                # Generate all output locally for preview
   python main.py --mode review --mock         # Review using mock data (no FUB API needed)
+  python main.py --mode sync                  # Daily snapshot into the dashboard DB
   python main.py --mode send                  # Generate + send emails (called by n8n)
   python main.py --agent "Jane Smith"         # Preview a single agent (--mock optional)
 """
 
 import argparse
 import logging
-import smtplib
 import sys
-from email.mime.multipart import MIMEMultipart
-from email.mime.text import MIMEText
 
 from config.settings import (
     AGENTS,
     BRAND,
-    EMAIL_FROM_ADDRESS,
-    EMAIL_FROM_NAME,
     EMAIL_SUBJECT_TEMPLATE,
-    SMTP_HOST,
     SMTP_PASSWORD,
-    SMTP_PORT,
     SMTP_USER,
 )
 
@@ -78,6 +72,19 @@ def cmd_review(args) -> int:
 
     print(f"  Generating review output…")
     run_review(scored)
+    return 0
+
+
+# ── Mode: sync ────────────────────────────────────────────────────────────────
+
+def cmd_sync(args) -> int:
+    from src import daily_sync, storage
+    print("\n── Daily Sync ───────────────────────────────────────────────────────")
+    storage.init_schema()
+    if not args.mock:
+        _check_fub_key()
+    summary = daily_sync.run(mock=args.mock)
+    print(f"  {summary['agents']} agents, {summary['snapshots']} snapshots written")
     return 0
 
 
@@ -165,6 +172,10 @@ def _filter_agent(scored: list[dict], name: str) -> list[dict]:
 
 def _send_emails(emails: list[dict], dry_run: bool = False) -> None:
     """Send emails via SMTP. Use --dry-run to skip actual delivery."""
+    import smtplib  # imported lazily so tests can patch main.smtplib.SMTP
+
+    from src.mailer import SMTPCredentialsMissing, send_html_batch
+
     if dry_run:
         print(f"  DRY RUN — would send {len(emails)} email(s):")
         for item in emails:
@@ -178,28 +189,26 @@ def _send_emails(emails: list[dict], dry_run: bool = False) -> None:
         )
         sys.exit(1)
 
-    print(f"  Connecting to {SMTP_HOST}:{SMTP_PORT}…")
+    batch = [
+        {
+            "to":      item["agent"]["email"],
+            "subject": EMAIL_SUBJECT_TEMPLATE.format(month=item["agent"]["period"]),
+            "html":    item["html"],
+        }
+        for item in emails
+    ]
     try:
-        with smtplib.SMTP(SMTP_HOST, SMTP_PORT) as server:
-            server.ehlo()
-            server.starttls()
-            server.login(SMTP_USER, SMTP_PASSWORD)
-
-            for item in emails:
-                agent = item["agent"]
-                msg = MIMEMultipart("alternative")
-                msg["Subject"] = EMAIL_SUBJECT_TEMPLATE.format(month=agent["period"])
-                msg["From"]    = f"{EMAIL_FROM_NAME} <{EMAIL_FROM_ADDRESS}>"
-                msg["To"]      = agent["email"]
-                msg.attach(MIMEText(item["html"], "html", "utf-8"))
-
-                server.sendmail(EMAIL_FROM_ADDRESS, agent["email"], msg.as_string())
-                print(f"  ✓ Sent to {agent['name']} <{agent['email']}>")
-
+        send_html_batch(batch)
+    except SMTPCredentialsMissing as exc:
+        print(f"  ERROR: {exc}")
+        sys.exit(1)
     except smtplib.SMTPException as e:
         print(f"  SMTP error: {e}")
         sys.exit(1)
 
+    for item in emails:
+        agent = item["agent"]
+        print(f"  ✓ Sent to {agent['name']} <{agent['email']}>")
     print(f"\n  {len(emails)} email(s) sent successfully.\n")
 
 
@@ -213,7 +222,7 @@ def main() -> int:
     )
     parser.add_argument(
         "--mode",
-        choices=["research", "review", "send"],
+        choices=["research", "review", "sync", "send"],
         help="Execution mode",
     )
     parser.add_argument(
@@ -248,6 +257,8 @@ def main() -> int:
         return cmd_research(args)
     elif args.mode == "review":
         return cmd_review(args)
+    elif args.mode == "sync":
+        return cmd_sync(args)
     elif args.mode == "send":
         return cmd_send(args)
     else:

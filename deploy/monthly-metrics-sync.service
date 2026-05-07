@@ -1,0 +1,16 @@
+[Unit]
+Description=Anchor Group Monthly Metrics — daily FUB → SQLite sync
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=monthly-metrics
+Group=monthly-metrics
+WorkingDirectory=/opt/monthly-metrics
+EnvironmentFile=/etc/monthly-metrics.env
+ExecStart=/opt/monthly-metrics/venv/bin/python main.py --mode sync
+NoNewPrivileges=true
+ProtectSystem=full
+ProtectHome=true
+PrivateTmp=true
