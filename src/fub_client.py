@@ -169,11 +169,13 @@ def fetch_users() -> list[dict]:
             user_id = u.get("id")
             if not email or not name or user_id is None:
                 continue
-            roster.append({
-                "name": name,
-                "email": email,
-                "fub_agent_id": str(user_id),
-            })
+            roster.append(
+                {
+                    "name": name,
+                    "email": email,
+                    "fub_agent_id": str(user_id),
+                }
+            )
 
         next_token = data.get("_metadata", {}).get("next")
         if not next_token:
