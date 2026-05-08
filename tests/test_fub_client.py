@@ -263,6 +263,107 @@ class TestFetchZillowPreferredReport:
         assert result == {"pickupRate": 0.8}
 
 
+# ── fetch_users (auto-discovery) ──────────────────────────────────────────────
+
+
+class TestFetchUsers:
+    def test_raises_when_api_key_missing(self, monkeypatch):
+        from src import fub_client
+
+        monkeypatch.setattr(fub_client, "FUB_API_KEY", "")
+
+        with pytest.raises(OSError, match="FUB_API_KEY"):
+            fub_client.fetch_users()
+
+    @responses.activate
+    def test_keeps_only_agents_and_brokers(self, monkeypatch):
+        from src import fub_client
+
+        monkeypatch.setattr(fub_client, "FUB_API_KEY", "test-key")
+        monkeypatch.setattr(fub_client, "FUB_BASE_URL", "https://api.example.com")
+
+        responses.get(
+            "https://api.example.com/users",
+            json={
+                "_metadata": {"total": 4, "next": None},
+                "users": [
+                    {"id": 1, "name": "Alice", "email": "a@x.com", "role": "Agent"},
+                    {"id": 2, "name": "Bob", "email": "b@x.com", "role": "Broker"},
+                    {"id": 3, "name": "Carol", "email": "c@x.com", "role": "Lender"},
+                    {"id": 4, "name": "Dan", "email": "d@x.com", "role": "Admin"},
+                ],
+            },
+            status=200,
+        )
+
+        roster = fub_client.fetch_users()
+
+        assert len(roster) == 2
+        assert {r["name"] for r in roster} == {"Alice", "Bob"}
+        assert all("fub_agent_id" in r for r in roster)
+
+    @responses.activate
+    def test_skips_inactive_and_missing_fields(self, monkeypatch):
+        from src import fub_client
+
+        monkeypatch.setattr(fub_client, "FUB_API_KEY", "test-key")
+        monkeypatch.setattr(fub_client, "FUB_BASE_URL", "https://api.example.com")
+
+        responses.get(
+            "https://api.example.com/users",
+            json={
+                "_metadata": {"total": 4, "next": None},
+                "users": [
+                    {"id": 1, "name": "Alice", "email": "a@x.com", "role": "Agent"},
+                    {"id": 2, "name": "Bob", "email": "b@x.com", "role": "Agent",
+                     "deleted": True},
+                    {"id": 3, "name": "Carol", "email": "c@x.com", "role": "Agent",
+                     "status": "inactive"},
+                    {"id": 4, "name": "", "email": "d@x.com", "role": "Agent"},
+                ],
+            },
+            status=200,
+        )
+
+        roster = fub_client.fetch_users()
+
+        assert len(roster) == 1
+        assert roster[0]["name"] == "Alice"
+
+    @responses.activate
+    def test_paginates_via_next_token(self, monkeypatch):
+        from src import fub_client
+
+        monkeypatch.setattr(fub_client, "FUB_API_KEY", "test-key")
+        monkeypatch.setattr(fub_client, "FUB_BASE_URL", "https://api.example.com")
+
+        responses.get(
+            "https://api.example.com/users",
+            json={
+                "_metadata": {"total": 2, "next": "page2token"},
+                "users": [
+                    {"id": 1, "name": "Alice", "email": "a@x.com", "role": "Agent"},
+                ],
+            },
+            status=200,
+        )
+        responses.get(
+            "https://api.example.com/users",
+            json={
+                "_metadata": {"total": 2, "next": None},
+                "users": [
+                    {"id": 2, "name": "Bob", "email": "b@x.com", "role": "Agent"},
+                ],
+            },
+            status=200,
+        )
+
+        roster = fub_client.fetch_users()
+
+        assert len(roster) == 2
+        assert {r["fub_agent_id"] for r in roster} == {"1", "2"}
+
+
 # ── fetch_all_agents ──────────────────────────────────────────────────────────
 
 
@@ -275,13 +376,18 @@ class TestFetchAllAgents:
         with pytest.raises(OSError, match="FUB_API_KEY"):
             fub_client.fetch_all_agents()
 
-    def test_returns_empty_when_no_agents(self, monkeypatch):
+    def test_falls_back_to_user_discovery_when_no_agents(self, monkeypatch, mocker):
         from src import fub_client
 
         monkeypatch.setattr(fub_client, "FUB_API_KEY", "test-key")
         monkeypatch.setattr(fub_client, "AGENTS", [])
 
+        mock_fetch_users = mocker.patch.object(
+            fub_client, "fetch_users", return_value=[]
+        )
+
         result = fub_client.fetch_all_agents()
+        mock_fetch_users.assert_called_once()
         assert result == []
 
     @responses.activate
