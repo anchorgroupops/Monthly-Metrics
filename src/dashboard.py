@@ -237,7 +237,58 @@ def _register_routes(app: Flask, limiter: Limiter) -> None:
     @app.route("/healthz")
     @csrf.exempt
     def healthz():
-        return "ok", 200
+        import shutil
+        from datetime import datetime as _dt
+
+        from flask import jsonify
+
+        ok = True
+        db_writable = False
+        last_heartbeat_age_hours: float | None = None
+        draft_queue_size = 0
+        disk_used_pct: float = 0.0
+
+        try:
+            with storage.connect() as conn:
+                conn.execute("SELECT 1").fetchone()
+                db_writable = True
+
+                row = conn.execute(
+                    "SELECT created_at FROM runs WHERE source = 'fub' "
+                    "ORDER BY id DESC LIMIT 1"
+                ).fetchone()
+                if row and row["created_at"]:
+                    try:
+                        last = _dt.fromisoformat(row["created_at"])
+                        delta = _dt.utcnow() - last
+                        last_heartbeat_age_hours = round(
+                            delta.total_seconds() / 3600, 2
+                        )
+                    except (TypeError, ValueError):
+                        pass
+
+                draft_queue_size = conn.execute(
+                    "SELECT COUNT(*) FROM drafts WHERE status='pending'"
+                ).fetchone()[0]
+        except Exception:
+            ok = False
+
+        try:
+            usage = shutil.disk_usage(str(storage.DB_PATH.parent))
+            disk_used_pct = round((usage.used / usage.total) * 100, 1)
+        except Exception:
+            pass
+        # Disk-full alerting is scripts/disk_check.sh's responsibility — healthz
+        # just reports the percent so monitors can read it.
+
+        payload = {
+            "ok": ok and db_writable,
+            "db_writable": db_writable,
+            "last_heartbeat_age_hours": last_heartbeat_age_hours,
+            "draft_queue_size": draft_queue_size,
+            "disk_used_pct": disk_used_pct,
+        }
+        return jsonify(payload), (200 if payload["ok"] else 503)
 
     @app.route("/login", methods=["GET", "POST"])
     @limiter.limit("5 per 15 minutes", methods=["POST"])

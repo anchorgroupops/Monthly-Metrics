@@ -68,10 +68,64 @@ def seeded_storage(isolated_db):
 
 
 class TestHealthz:
-    def test_returns_200(self, client):
+    def test_returns_200_with_json_when_healthy(self, client, isolated_db):
+        import json
+
         resp = client.get("/healthz")
         assert resp.status_code == 200
-        assert b"ok" in resp.data
+        data = json.loads(resp.get_data(as_text=True))
+        assert data["ok"] is True
+        assert data["db_writable"] is True
+        assert isinstance(data["draft_queue_size"], int)
+        assert isinstance(data["disk_used_pct"], (int, float))
+        assert data["last_heartbeat_age_hours"] is None or isinstance(
+            data["last_heartbeat_age_hours"], (int, float)
+        )
+
+    def test_returns_503_when_db_not_writable(self, client, isolated_db, monkeypatch):
+        import json
+
+        from src import storage
+
+        def _broken_connect():
+            raise RuntimeError("DB unavailable")
+
+        monkeypatch.setattr(storage, "connect", _broken_connect)
+
+        resp = client.get("/healthz")
+        assert resp.status_code == 503
+        data = json.loads(resp.get_data(as_text=True))
+        assert data["ok"] is False
+        assert data["db_writable"] is False
+
+    def test_draft_queue_size_counts_pending(self, client, isolated_db):
+        import json
+
+        from src import storage
+
+        storage.save_period(
+            [{"agent_id": "100", "name": "A", "email": "a@x", "period": "2026-04",
+              "csat": 0.85, "_raw": {}}],
+            source="test",
+        )
+        storage.queue_draft("100", "2026-04", "<html/>")
+
+        resp = client.get("/healthz")
+        data = json.loads(resp.get_data(as_text=True))
+        assert data["draft_queue_size"] == 1
+
+    def test_last_heartbeat_age_populated_after_fub_run(self, client, isolated_db):
+        import json
+
+        from src import storage
+
+        run_id = storage.start_run(source="fub")
+        storage.finish_run(run_id, "ok")
+
+        resp = client.get("/healthz")
+        data = json.loads(resp.get_data(as_text=True))
+        assert data["last_heartbeat_age_hours"] is not None
+        assert data["last_heartbeat_age_hours"] >= 0
 
 
 # ── Root redirect ────────────────────────────────────────────────────────────
