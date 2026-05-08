@@ -191,20 +191,26 @@ def test_cmd_pull_marks_error_on_fub_failure(isolated_db, monkeypatch):
     assert "FUB 502" in (latest["notes"] or "")
 
 
-def test_cmd_pull_no_agents_configured(isolated_db, monkeypatch):
-    """Empty AGENTS list → graceful exit 0, no runs row created."""
+def test_cmd_pull_discovery_returns_no_agents(isolated_db, monkeypatch, mocker):
+    """
+    AGENTS empty + auto-discovery returns [] → graceful exit 0, run row marked
+    'ok' with the no-agents note. (fetch_all_agents is mocked so the test never
+    touches the live FUB API.)
+    """
     from config import settings
     from main import cmd_pull
     from src import storage
 
-    monkeypatch.setattr(settings, "AGENTS", [])
     monkeypatch.setattr(settings, "FUB_API_KEY", "test-key")
+    mocker.patch("src.fub_client.fetch_all_agents", return_value=[])
 
     rc = cmd_pull(args=type("A", (), {})())
     assert rc == 0
     with storage.connect() as conn:
-        runs = conn.execute("SELECT id FROM runs").fetchall()
-    assert len(runs) == 0
+        runs = conn.execute("SELECT id, status, notes FROM runs").fetchall()
+    assert len(runs) == 1
+    assert runs[0][1] == "ok"
+    assert "no agents" in (runs[0][2] or "").lower()
 
 
 def test_cmd_pull_missing_api_key(isolated_db, monkeypatch):
@@ -212,7 +218,6 @@ def test_cmd_pull_missing_api_key(isolated_db, monkeypatch):
     from main import cmd_pull
     from src import storage
 
-    monkeypatch.setattr(settings, "AGENTS", [{"name": "x", "email": "x@x", "fub_agent_id": "100"}])
     monkeypatch.setattr(settings, "FUB_API_KEY", "")
 
     rc = cmd_pull(args=type("A", (), {})())

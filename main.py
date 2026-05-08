@@ -61,15 +61,11 @@ def cmd_pull(args) -> int:
     re-running for the same period upserts on (agent_id, period, metric_key).
     Used by the cron pipeline and the dashboard's manual-pull button.
     """
-    from config.settings import AGENTS, FUB_API_KEY
+    from config.settings import FUB_API_KEY
     from src.fub_client import fetch_all_agents
     from src.storage import finish_run, save_period, start_run
 
     print("\n── Pull Mode ────────────────────────────────────────────────────────")
-
-    if not AGENTS:
-        print("  No agents configured in config/settings.py — nothing to pull.")
-        return 0
 
     if not FUB_API_KEY:
         print(
@@ -86,7 +82,29 @@ def cmd_pull(args) -> int:
             print("  FUB returned 0 agents — nothing to save.")
             return 0
         save_period(agents, source="fub", run_id=run_id)
-        print(f"  Pulled {len(agents)} agent record(s) from FUB.")
+
+        errored = sum(1 for a in agents if a.get("_error"))
+        all_nulls = all(
+            a.get("pCVR") is None
+            and a.get("pickup_rate") is None
+            and a.get("csat") is None
+            and a.get("zhl_transfers") is None
+            for a in agents
+        )
+
+        if errored == len(agents) or all_nulls:
+            msg = (
+                f"Pulled {len(agents)} agents from FUB but every record was empty or errored "
+                f"({errored}/{len(agents)} explicit fetch failures). "
+                "The Zillow Preferred Performance Report is UI-only in FUB — "
+                "admin must upload the monthly CSV via the dashboard."
+            )
+            finish_run(run_id, "error", msg)
+            print(f"  ERROR: {msg}")
+            return 1
+
+        finish_run(run_id, "ok", f"{len(agents)} agents, {errored} errored")
+        print(f"  Pulled {len(agents)} agent record(s) from FUB ({errored} with errors).")
         print("  Next: python main.py --mode draft\n")
         return 0
     except Exception as exc:

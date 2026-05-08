@@ -77,6 +77,18 @@ def _get(path: str, params: dict | None = None) -> dict:
                 continue
             resp.raise_for_status()
             return resp.json()
+        except requests.HTTPError as exc:
+            status = exc.response.status_code if exc.response is not None else None
+            # 4xx (except 429, handled above) are permanent — don't retry.
+            if status is not None and 400 <= status < 500:
+                log.warning("FUB %d for %s — not retrying", status, url)
+                raise
+            log.warning("FUB request failed (attempt %d/%d): %s", attempt, FUB_MAX_RETRIES, exc)
+            if attempt < FUB_MAX_RETRIES:
+                time.sleep(delay)
+                delay *= 2
+            else:
+                raise
         except requests.RequestException as exc:
             log.warning("FUB request failed (attempt %d/%d): %s", attempt, FUB_MAX_RETRIES, exc)
             if attempt < FUB_MAX_RETRIES:
@@ -121,6 +133,58 @@ def fetch_zillow_preferred_report(agent_id: str, start_date: str, end_date: str)
         raise
 
 
+def fetch_users() -> list[dict]:
+    """
+    Discover the agent roster from FUB's /v1/users endpoint.
+
+    Used as a fallback when AGENTS in config/settings.py is empty — lets the
+    monthly cron run without a hand-maintained roster file. Pulls only users
+    with role "Agent" or "Broker"; skips anything marked deleted/inactive.
+
+    Returns a list of agent_cfg dicts shaped like the entries in AGENTS:
+      {"name": str, "email": str, "fub_agent_id": str}
+    """
+    if not FUB_API_KEY:
+        raise OSError("FUB_API_KEY is not set; cannot auto-discover users.")
+
+    roster: list[dict] = []
+    next_token: str | None = None
+    seen = 0
+
+    while True:
+        params = {"limit": 100}
+        if next_token:
+            params["next"] = next_token
+        data = _get("/users", params=params)
+
+        for u in data.get("users", []):
+            seen += 1
+            role = (u.get("role") or "").strip()
+            if role not in ("Agent", "Broker"):
+                continue
+            if u.get("deleted") or u.get("status") in ("inactive", "disabled"):
+                continue
+            email = (u.get("email") or "").strip()
+            name = (u.get("name") or "").strip()
+            user_id = u.get("id")
+            if not email or not name or user_id is None:
+                continue
+            roster.append(
+                {
+                    "name": name,
+                    "email": email,
+                    "fub_agent_id": str(user_id),
+                }
+            )
+
+        next_token = data.get("_metadata", {}).get("next")
+        if not next_token:
+            break
+
+    log.info("FUB user auto-discovery: %d users seen, %d kept as agents", seen, len(roster))
+    return roster
+
+
 def fetch_all_agents(period: str | None = None) -> list[dict]:
     """
     Fetch and normalize Zillow Preferred metrics for every agent in AGENTS.
@@ -145,16 +209,20 @@ def fetch_all_agents(period: str | None = None) -> list[dict]:
             "FUB_API_KEY is not set. Export it before running:\n  export FUB_API_KEY=your_key_here"
         )
 
-    if not AGENTS:
-        log.warning("No agents configured in config/settings.py — returning empty list.")
-        return []
+    roster = list(AGENTS)
+    if not roster:
+        log.info("AGENTS is empty in config/settings.py — auto-discovering from FUB /v1/users.")
+        roster = fetch_users()
+        if not roster:
+            log.warning("FUB /v1/users returned no usable agents — returning empty list.")
+            return []
 
     start_date, end_date = _report_period()
     start_dt = date.fromisoformat(start_date)
     period_label = start_dt.strftime("%B %Y")
 
     results = []
-    for agent_cfg in AGENTS:
+    for agent_cfg in roster:
         agent_id = agent_cfg["fub_agent_id"]
         name = agent_cfg["name"]
         log.info("Fetching metrics for %s (ID: %s)…", name, agent_id)
