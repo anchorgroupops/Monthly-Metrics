@@ -402,11 +402,12 @@ def _register_routes(app: Flask, limiter: Limiter) -> None:
     @app.route("/pull-now", methods=["POST"])
     @login_required
     def pull_now():
-        from config.settings import AGENTS, FUB_API_KEY
+        from config.settings import FUB_API_KEY
 
-        if not AGENTS:
-            flash("No agents configured in config/settings.py — nothing to pull.", "error")
-            return redirect(url_for("home"))
+        # An empty AGENTS list is intentional — the roster auto-discovers from
+        # FUB /v1/users inside fetch_all_agents(), so we don't pre-empt the run
+        # here. If discovery yields nothing the worker will mark the run "ok"
+        # with a "FUB returned 0 agents" note.
         if not FUB_API_KEY:
             flash("FUB_API_KEY is not set in the deployment environment.", "error")
             return redirect(url_for("home"))

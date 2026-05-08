@@ -280,14 +280,20 @@ class TestUpload:
 
 
 class TestPull:
-    def test_pull_now_no_agents_flashes_error(self, auth_client, monkeypatch):
-
-        # Module-level imports inside the route — patch settings module
+    def test_pull_now_empty_agents_does_not_block(self, auth_client, monkeypatch, mocker):
+        # AGENTS is intentionally empty in production (privacy — roster is not
+        # committed). The /pull-now route must not pre-empt the run on that
+        # condition; auto-discovery runs inside fetch_all_agents().
         from config import settings
 
         monkeypatch.setattr(settings, "AGENTS", [])
+        monkeypatch.setattr(settings, "FUB_API_KEY", "test-key")
+        thread_mock = mocker.patch("src.dashboard.threading.Thread")
+
         resp = auth_client.post("/pull-now", follow_redirects=False)
         assert resp.status_code in (302, 303)
+        thread_mock.assert_called_once()
+        thread_mock.return_value.start.assert_called_once()
 
     def test_pull_now_no_api_key_flashes_error(self, auth_client, monkeypatch):
         from config import settings
