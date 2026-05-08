@@ -77,6 +77,18 @@ def _get(path: str, params: dict | None = None) -> dict:
                 continue
             resp.raise_for_status()
             return resp.json()
+        except requests.HTTPError as exc:
+            status = exc.response.status_code if exc.response is not None else None
+            # 4xx (except 429, handled above) are permanent — don't retry.
+            if status is not None and 400 <= status < 500:
+                log.warning("FUB %d for %s — not retrying", status, url)
+                raise
+            log.warning("FUB request failed (attempt %d/%d): %s", attempt, FUB_MAX_RETRIES, exc)
+            if attempt < FUB_MAX_RETRIES:
+                time.sleep(delay)
+                delay *= 2
+            else:
+                raise
         except requests.RequestException as exc:
             log.warning("FUB request failed (attempt %d/%d): %s", attempt, FUB_MAX_RETRIES, exc)
             if attempt < FUB_MAX_RETRIES:
