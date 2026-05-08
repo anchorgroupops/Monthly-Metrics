@@ -573,3 +573,37 @@ class TestMainEntryPointGaps:
         # cmd_upload was called with args; check args.file was populated from extras
         called_args = cmd_upload.call_args.args[0]
         assert called_args.file == str(tmp_path / "x.csv")
+
+
+# ── cmd_migrate ───────────────────────────────────────────────────────────────
+
+
+class TestCmdMigrate:
+    def test_runs_pending_migrations(self, isolated_db, capsys):
+        from main import cmd_migrate
+
+        rc = cmd_migrate(_args())
+
+        assert rc == 0
+        out = capsys.readouterr().out
+        assert "Migrate" in out
+
+    def test_second_run_is_noop(self, isolated_db, capsys):
+        from main import cmd_migrate
+
+        cmd_migrate(_args())  # first run applies
+        capsys.readouterr()  # discard first output
+        rc = cmd_migrate(_args())
+
+        assert rc == 0
+        assert "No pending migrations" in capsys.readouterr().out
+
+    def test_migrate_mode_dispatches(self, mocker):
+        from main import main as main_entry
+
+        cmd_migrate = mocker.patch("main.cmd_migrate", return_value=0)
+        mocker.patch("sys.argv", ["main.py", "--mode", "migrate"])
+
+        rc = main_entry()
+        assert rc == 0
+        cmd_migrate.assert_called_once()

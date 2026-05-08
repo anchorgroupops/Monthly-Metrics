@@ -76,17 +76,10 @@ CREATE INDEX IF NOT EXISTS idx_drafts_status ON drafts(period, status);
 
 
 def _ensure_db() -> None:
-    DB_PATH.parent.mkdir(parents=True, exist_ok=True)
-    conn = sqlite3.connect(DB_PATH)
-    try:
-        conn.executescript(SCHEMA)
-        # WAL is per-database and persists in the file header (one-time per DB).
-        # synchronous=NORMAL is per-connection — set in connect() too.
-        conn.execute("PRAGMA journal_mode=WAL")
-        conn.execute("PRAGMA synchronous=NORMAL")
-        conn.commit()
-    finally:
-        conn.close()
+    """Run any pending schema migrations + apply per-DB pragmas."""
+    from src.migrations._runner import apply_pending_migrations
+
+    apply_pending_migrations(DB_PATH)
 
 
 @contextmanager

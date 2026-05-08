@@ -260,6 +260,26 @@ def cmd_agent(args) -> int:
     return cmd_review(args)
 
 
+# ── Mode: migrate ─────────────────────────────────────────────────────────────
+
+
+def cmd_migrate(args) -> int:
+    """Run pending schema migrations against data/metrics.db."""
+    from src.migrations._runner import apply_pending_migrations
+    from src.storage import DB_PATH
+
+    print("\n── Migrate ──────────────────────────────────────────────────────────")
+    print(f"  DB: {DB_PATH}")
+    applied = apply_pending_migrations(DB_PATH)
+    if applied:
+        print(f"  Applied {len(applied)} migration(s):")
+        for name in applied:
+            print(f"    - {name}")
+    else:
+        print("  No pending migrations.")
+    return 0
+
+
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
 
@@ -339,7 +359,7 @@ def main() -> int:
     )
     parser.add_argument(
         "--mode",
-        choices=["research", "pull", "upload", "review", "draft", "dashboard", "send"],
+        choices=["research", "pull", "upload", "review", "draft", "dashboard", "send", "migrate"],
         help="Execution mode",
     )
     parser.add_argument(
@@ -403,6 +423,8 @@ def main() -> int:
         return cmd_dashboard(args)
     if args.mode == "send":
         return cmd_send(args)
+    if args.mode == "migrate":
+        return cmd_migrate(args)
 
     parser.print_help()
     return 0
