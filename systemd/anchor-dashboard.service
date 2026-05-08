@@ -14,6 +14,9 @@ Environment=PYTHONDONTWRITEBYTECODE=1
 ExecStart=/opt/Monthly-Metrics/scripts/serve.sh
 Restart=on-failure
 RestartSec=5
+# Stop crash-loop SD-card thrash: max 5 restarts in any 5-min window.
+StartLimitBurst=5
+StartLimitIntervalSec=300
 
 # User= is filled in by scripts/install_dashboard_service.sh at install time
 # so the service runs as the same UNIX user that owns the repo.

@@ -38,5 +38,8 @@ htmlcov/
 # Repo backup bundles (kept out-of-tree)
 data/backups/*.bundle
 
+# Notifier dedup marker (operational state, not source)
+data/.last-alert
+
 # Stray git scratch file
 COMMIT_EDITMSG

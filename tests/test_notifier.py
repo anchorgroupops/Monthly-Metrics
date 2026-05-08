@@ -9,8 +9,12 @@ import pytest
 
 
 @pytest.fixture
-def configured_notifier(monkeypatch):
-    """Patch notifier's SMTP credentials so notify_admin_failure proceeds to send."""
+def configured_notifier(monkeypatch, tmp_path):
+    """Patch notifier's SMTP credentials so notify_admin_failure proceeds to send.
+
+    Also isolates DEDUP_MARKER per test so successful sends in one test don't
+    suppress sends in the next.
+    """
     from src import notifier
 
     monkeypatch.setattr(notifier, "SMTP_USER", "user@example.com")
@@ -20,6 +24,7 @@ def configured_notifier(monkeypatch):
     monkeypatch.setattr(notifier, "ADMIN_EMAIL", "admin@example.com")
     monkeypatch.setattr(notifier, "EMAIL_FROM_ADDRESS", "reports@example.com")
     monkeypatch.setattr(notifier, "EMAIL_FROM_NAME", "Anchor Reports")
+    monkeypatch.setattr(notifier, "DEDUP_MARKER", tmp_path / ".last-alert")
     return notifier
 
 
@@ -147,3 +152,54 @@ class TestSMTPError:
         result = configured_notifier.notify_admin_failure("subject", "body")
 
         assert result is False
+
+
+# ── Dedup ─────────────────────────────────────────────────────────────────────
+
+
+class TestAlertDedup:
+    def test_first_alert_sends_and_creates_marker(
+        self, mocker, configured_notifier, tmp_path, monkeypatch
+    ):
+        marker = tmp_path / ".last-alert"
+        monkeypatch.setattr(configured_notifier, "DEDUP_MARKER", marker)
+        monkeypatch.setattr(configured_notifier, "DEDUP_WINDOW_MINUTES", 30)
+
+        smtp_class = mocker.patch("smtplib.SMTP")
+        result = configured_notifier.notify_admin_failure("subject", "body")
+
+        assert result is True
+        smtp_class.assert_called_once()
+        assert marker.exists()
+
+    def test_second_alert_within_window_is_skipped(
+        self, mocker, configured_notifier, tmp_path, monkeypatch
+    ):
+        marker = tmp_path / ".last-alert"
+        marker.touch()
+        monkeypatch.setattr(configured_notifier, "DEDUP_MARKER", marker)
+        monkeypatch.setattr(configured_notifier, "DEDUP_WINDOW_MINUTES", 30)
+
+        smtp_class = mocker.patch("smtplib.SMTP")
+        result = configured_notifier.notify_admin_failure("subject", "body")
+
+        assert result is False
+        smtp_class.assert_not_called()
+
+    def test_alert_after_window_sends(self, mocker, configured_notifier, tmp_path, monkeypatch):
+        import os
+        import time
+
+        marker = tmp_path / ".last-alert"
+        marker.touch()
+        old = time.time() - 60 * 60  # 60 min ago
+        os.utime(marker, (old, old))
+
+        monkeypatch.setattr(configured_notifier, "DEDUP_MARKER", marker)
+        monkeypatch.setattr(configured_notifier, "DEDUP_WINDOW_MINUTES", 30)
+
+        smtp_class = mocker.patch("smtplib.SMTP")
+        result = configured_notifier.notify_admin_failure("subject", "body")
+
+        assert result is True
+        smtp_class.assert_called_once()
