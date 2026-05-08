@@ -254,16 +254,13 @@ def _register_routes(app: Flask, limiter: Limiter) -> None:
                 db_writable = True
 
                 row = conn.execute(
-                    "SELECT created_at FROM runs WHERE source = 'fub' "
-                    "ORDER BY id DESC LIMIT 1"
+                    "SELECT created_at FROM runs WHERE source = 'fub' ORDER BY id DESC LIMIT 1"
                 ).fetchone()
                 if row and row["created_at"]:
                     try:
                         last = _dt.fromisoformat(row["created_at"])
                         delta = _dt.utcnow() - last
-                        last_heartbeat_age_hours = round(
-                            delta.total_seconds() / 3600, 2
-                        )
+                        last_heartbeat_age_hours = round(delta.total_seconds() / 3600, 2)
                     except (TypeError, ValueError):
                         pass
 
@@ -276,7 +273,7 @@ def _register_routes(app: Flask, limiter: Limiter) -> None:
         try:
             usage = shutil.disk_usage(str(storage.DB_PATH.parent))
             disk_used_pct = round((usage.used / usage.total) * 100, 1)
-        except Exception:
+        except Exception:  # noqa: S110 — disk_used_pct is best-effort; missing it doesn't degrade health
             pass
         # Disk-full alerting is scripts/disk_check.sh's responsibility — healthz
         # just reports the percent so monitors can read it.

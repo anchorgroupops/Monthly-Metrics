@@ -104,8 +104,16 @@ class TestHealthz:
         from src import storage
 
         storage.save_period(
-            [{"agent_id": "100", "name": "A", "email": "a@x", "period": "2026-04",
-              "csat": 0.85, "_raw": {}}],
+            [
+                {
+                    "agent_id": "100",
+                    "name": "A",
+                    "email": "a@x",
+                    "period": "2026-04",
+                    "csat": 0.85,
+                    "_raw": {},
+                }
+            ],
             source="test",
         )
         storage.queue_draft("100", "2026-04", "<html/>")

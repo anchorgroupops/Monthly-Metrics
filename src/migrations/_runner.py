@@ -31,10 +31,7 @@ def apply_pending_migrations(db_path: Path) -> list[str]:
         conn.execute("PRAGMA synchronous=NORMAL")
 
         conn.execute(TRACKING_TABLE_SQL)
-        applied = {
-            r[0]
-            for r in conn.execute("SELECT filename FROM schema_migrations").fetchall()
-        }
+        applied = {r[0] for r in conn.execute("SELECT filename FROM schema_migrations").fetchall()}
 
         files = sorted(p for p in MIGRATIONS_DIR.glob("*.sql"))
         new_applied: list[str] = []

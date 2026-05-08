@@ -416,8 +416,16 @@ class TestWAL:
         from src import storage
 
         storage.save_period(
-            [{"agent_id": "100", "name": "A", "email": "a@x", "period": "2026-04",
-              "csat": 0.85, "_raw": {}}],
+            [
+                {
+                    "agent_id": "100",
+                    "name": "A",
+                    "email": "a@x",
+                    "period": "2026-04",
+                    "csat": 0.85,
+                    "_raw": {},
+                }
+            ],
             source="test",
         )
 

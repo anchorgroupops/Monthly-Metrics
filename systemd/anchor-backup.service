@@ -1,0 +1,9 @@
+[Unit]
+Description=Anchor Group Monthly Metrics — daily DB backup
+After=anchor-dashboard.service
+
+[Service]
+Type=oneshot
+WorkingDirectory=/opt/Monthly-Metrics
+ExecStart=/opt/Monthly-Metrics/scripts/backup_db.sh
+User=anchor

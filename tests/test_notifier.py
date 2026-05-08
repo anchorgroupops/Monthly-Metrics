@@ -186,9 +186,7 @@ class TestAlertDedup:
         assert result is False
         smtp_class.assert_not_called()
 
-    def test_alert_after_window_sends(
-        self, mocker, configured_notifier, tmp_path, monkeypatch
-    ):
+    def test_alert_after_window_sends(self, mocker, configured_notifier, tmp_path, monkeypatch):
         import os
         import time
 

@@ -16,7 +16,6 @@ via the dashboard before any email is sent.
 sudo mkdir -p /opt && sudo chown "$USER" /opt
 git clone https://github.com/anchorgroupops/Monthly-Metrics.git /opt/Monthly-Metrics
 cd /opt/Monthly-Metrics
-git checkout claude/zillow-digest-system-OGMIF   # remove after PR merges to main
 
 scripts/install.sh                       # creates venv, installs deps, scaffolds .env, runs tests
 nano .env                                # fill in ANTHROPIC_API_KEY, SMTP_*, EMAIL_FROM
