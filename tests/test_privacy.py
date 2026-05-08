@@ -45,6 +45,7 @@ def test_review_index_does_not_expose_per_agent_metrics_to_other_agents(
     it doesn't somehow leak into per-agent emails.
     """
     from config import settings
+
     monkeypatch.setattr(settings, "REVIEW_DIR", tmp_path / "review")
 
     from src.csv_ingest import parse_file
@@ -66,6 +67,4 @@ def test_review_index_does_not_expose_per_agent_metrics_to_other_agents(
         for other in scored:
             if other["agent_id"] == agent["agent_id"]:
                 continue
-            assert other["name"] not in html, (
-                f"Leak: {other['name']} found inside {path.name}"
-            )
+            assert other["name"] not in html, f"Leak: {other['name']} found inside {path.name}"
