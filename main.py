@@ -61,15 +61,11 @@ def cmd_pull(args) -> int:
     re-running for the same period upserts on (agent_id, period, metric_key).
     Used by the cron pipeline and the dashboard's manual-pull button.
     """
-    from config.settings import AGENTS, FUB_API_KEY
+    from config.settings import FUB_API_KEY
     from src.fub_client import fetch_all_agents
     from src.storage import finish_run, save_period, start_run
 
     print("\n── Pull Mode ────────────────────────────────────────────────────────")
-
-    if not AGENTS:
-        print("  No agents configured in config/settings.py — nothing to pull.")
-        return 0
 
     if not FUB_API_KEY:
         print(
