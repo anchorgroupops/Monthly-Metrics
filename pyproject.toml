@@ -43,8 +43,6 @@ addopts = [
 filterwarnings = [
     "default",
     "ignore::DeprecationWarning",
-    # FIXME(P3): real sqlite3 resource leaks in src/storage.py — close connections explicitly
-    "ignore::ResourceWarning",
 ]
 
 [tool.coverage.run]

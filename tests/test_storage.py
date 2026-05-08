@@ -406,3 +406,58 @@ class TestConnection:
         with storage.connect() as conn:
             row = conn.execute("SELECT 1 AS x").fetchone()
         assert row["x"] == 1
+
+
+# ── WAL mode + lifecycle ──────────────────────────────────────────────────────
+
+
+class TestWAL:
+    def test_journal_mode_is_wal(self, isolated_db):
+        from src import storage
+
+        storage.save_period(
+            [{"agent_id": "100", "name": "A", "email": "a@x", "period": "2026-04",
+              "csat": 0.85, "_raw": {}}],
+            source="test",
+        )
+
+        with storage.connect() as conn:
+            mode = conn.execute("PRAGMA journal_mode").fetchone()[0]
+        assert mode.lower() == "wal"
+
+    def test_synchronous_is_normal(self, isolated_db):
+        from src import storage
+
+        with storage.connect() as conn:
+            sync = conn.execute("PRAGMA synchronous").fetchone()[0]
+        # NORMAL = 1
+        assert sync == 1
+
+
+class TestConnectionLifecycle:
+    def test_no_resource_warning_on_normal_use(self, isolated_db, recwarn):
+        import warnings
+
+        from src import storage
+
+        warnings.simplefilter("always", ResourceWarning)
+        for _ in range(50):
+            with storage.connect() as conn:
+                conn.execute("SELECT 1").fetchone()
+
+        rw = [w for w in recwarn.list if issubclass(w.category, ResourceWarning)]
+        assert rw == [], f"ResourceWarning leak: {[str(w.message) for w in rw]}"
+
+    def test_no_resource_warning_on_exception_inside_with(self, isolated_db, recwarn):
+        import warnings
+
+        from src import storage
+
+        warnings.simplefilter("always", ResourceWarning)
+        with pytest.raises(RuntimeError):
+            with storage.connect() as conn:
+                conn.execute("SELECT 1")
+                raise RuntimeError("simulated mid-transaction error")
+
+        rw = [w for w in recwarn.list if issubclass(w.category, ResourceWarning)]
+        assert rw == []

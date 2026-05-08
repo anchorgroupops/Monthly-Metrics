@@ -77,8 +77,16 @@ CREATE INDEX IF NOT EXISTS idx_drafts_status ON drafts(period, status);
 
 def _ensure_db() -> None:
     DB_PATH.parent.mkdir(parents=True, exist_ok=True)
-    with sqlite3.connect(DB_PATH) as conn:
+    conn = sqlite3.connect(DB_PATH)
+    try:
         conn.executescript(SCHEMA)
+        # WAL is per-database and persists in the file header (one-time per DB).
+        # synchronous=NORMAL is per-connection — set in connect() too.
+        conn.execute("PRAGMA journal_mode=WAL")
+        conn.execute("PRAGMA synchronous=NORMAL")
+        conn.commit()
+    finally:
+        conn.close()
 
 
 @contextmanager
@@ -86,9 +94,13 @@ def connect() -> Iterator[sqlite3.Connection]:
     _ensure_db()
     conn = sqlite3.connect(DB_PATH)
     conn.row_factory = sqlite3.Row
+    conn.execute("PRAGMA synchronous=NORMAL")
     try:
         yield conn
         conn.commit()
+    except Exception:
+        conn.rollback()
+        raise
     finally:
         conn.close()
 
