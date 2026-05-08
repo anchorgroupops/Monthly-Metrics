@@ -484,23 +484,25 @@ class TestCheckFubKey:
 
 
 class TestCmdPullBranches:
-    def test_pull_with_no_agents_returns_0(self, isolated_db, monkeypatch):
+    def test_pull_with_no_agents_falls_back_to_discovery(
+        self, isolated_db, monkeypatch, mocker
+    ):
         from config import settings
         from main import cmd_pull
 
         monkeypatch.setattr(settings, "AGENTS", [])
         monkeypatch.setattr(settings, "FUB_API_KEY", "test-key")
+        # fetch_all_agents returns [] when discovery yields no Agents/Brokers;
+        # cmd_pull should treat that as "ok, nothing to save" not as "no roster".
+        mocker.patch("src.fub_client.fetch_all_agents", return_value=[])
 
         rc = cmd_pull(_args())
-        assert rc == 0  # No agents → graceful early return
+        assert rc == 0
 
     def test_pull_with_no_api_key_returns_1(self, isolated_db, monkeypatch):
         from config import settings
         from main import cmd_pull
 
-        monkeypatch.setattr(
-            settings, "AGENTS", [{"name": "x", "email": "x@x", "fub_agent_id": "1"}]
-        )
         monkeypatch.setattr(settings, "FUB_API_KEY", "")
 
         rc = cmd_pull(_args())
