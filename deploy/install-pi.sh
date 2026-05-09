@@ -42,7 +42,11 @@ fi
 mkdir -p "$APP_DIR"
 echo "[2/5] Syncing repo to $APP_DIR"
 rsync -a --delete \
-  --exclude=".git" --exclude=".venv" --exclude="venv" --exclude="data" \
+  --exclude=".git" \
+  --exclude=".venv" --exclude="venv" \
+  --exclude="data" \
+  --exclude="config/agents.csv" \
+  --exclude="output" \
   "$REPO_DIR/" "$APP_DIR/"
 chown -R "$APP_USER:$APP_USER" "$APP_DIR"
 
