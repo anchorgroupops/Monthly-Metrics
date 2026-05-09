@@ -63,13 +63,24 @@ if [[ ! -f "$ENV_FILE" ]]; then
 
 FUB_API_KEY=
 ANTHROPIC_API_KEY=
+
+# SMTP for monthly emails AND magic-link login
 SMTP_HOST=smtp.gmail.com
 SMTP_PORT=587
 SMTP_USER=
 SMTP_PASSWORD=
 EMAIL_FROM=
-WEB_BASE_URL=https://metrics.example.com
+
+# Public URL the dashboard is served at. Must include the sub-path if any.
+WEB_BASE_URL=https://anchor.joelycannoli.com/metrics
+
+# Mount point inside the URL space. MUST match the path portion of
+# WEB_BASE_URL above (without the trailing slash). Leave blank to mount at /.
+WEB_BASE_PATH=/metrics
+
+# Generate with: openssl rand -hex 32
 SECRET_KEY=
+
 METRICS_DB_PATH=/opt/monthly-metrics/data/metrics.db
 EOF
   chown root:"$APP_USER" "$ENV_FILE"

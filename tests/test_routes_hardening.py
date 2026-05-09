@@ -57,6 +57,7 @@ class TestCookieIsSecure:
 class TestServerErrorHandler:
     def test_unhandled_exception_returns_clean_500(self, monkeypatch, tmp_db):
         monkeypatch.setattr("src.storage.DATABASE_PATH", tmp_db)
+        monkeypatch.setattr("src.webapp.app.WEB_BASE_PATH", "")
         from fastapi.testclient import TestClient
 
         from src.webapp.app import create_app

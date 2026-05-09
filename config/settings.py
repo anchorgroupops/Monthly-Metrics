@@ -104,8 +104,14 @@ DATA_DIR = BASE_DIR / "data"
 DATABASE_PATH = Path(os.environ.get("METRICS_DB_PATH", DATA_DIR / "metrics.db"))
 
 # Public URL the magic-link emails point at. Set this on the Pi to the
-# Cloudflare-Tunnel hostname (e.g. https://metrics.anchorgroup.com).
+# Cloudflare-Tunnel hostname (e.g. https://anchor.joelycannoli.com/metrics).
 WEB_BASE_URL = os.environ.get("WEB_BASE_URL", "http://localhost:8081").rstrip("/")
+
+# When the dashboard is served behind a reverse proxy at a sub-path
+# (e.g. anchor.joelycannoli.com/metrics), set WEB_BASE_PATH=/metrics so
+# redirects, the session-cookie Path, and FastAPI's root_path all line up.
+# Leave empty for root-mounted deployments.
+WEB_BASE_PATH = os.environ.get("WEB_BASE_PATH", "").rstrip("/")
 
 # Used to sign session cookies and magic-link tokens. MUST be set in production.
 # A random default lets tests and `--mock` runs work without env config.

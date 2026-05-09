@@ -20,7 +20,7 @@ from fastapi import FastAPI, Request
 from fastapi.responses import HTMLResponse
 from jinja2 import Environment, FileSystemLoader, select_autoescape
 
-from config.settings import BRAND, SECRET_KEY
+from config.settings import BRAND, SECRET_KEY, WEB_BASE_PATH
 from src import storage
 
 log = logging.getLogger(__name__)
@@ -51,6 +51,9 @@ def create_app() -> FastAPI:
         autoescape=select_autoescape(["html", "j2"]),
     )
     application.state.jinja.globals["brand"] = BRAND
+    # Templates use this so form actions and links include the deployment
+    # prefix (e.g. "/metrics") when the app is mounted under a sub-path.
+    application.state.jinja.globals["base_path"] = WEB_BASE_PATH
 
     # Ensure schema exists before the first request lands.
     storage.init_schema()
@@ -70,7 +73,11 @@ def create_app() -> FastAPI:
 
     from src.webapp.routes import router
 
-    application.include_router(router)
+    # Mount under WEB_BASE_PATH so a reverse proxy can forward unmodified URLs
+    # (e.g. /metrics/login → /metrics/login on the upstream). This works the
+    # same for Cloudflare Tunnel `path:` ingress, nginx `proxy_pass` without a
+    # trailing slash, or Caddy `reverse_proxy` without `handle_path`.
+    application.include_router(router, prefix=WEB_BASE_PATH)
     return application
 
 

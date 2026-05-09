@@ -55,7 +55,7 @@
       {% set status_class = 'pill-' ~ scored.overall_status|replace(' ', '') %}
       <span class="pill {{ status_class }}">{{ scored.overall_status }}</span>
     {% endif %}
-    <form method="POST" action="/logout" style="margin:0;">
+    <form method="POST" action="{{ base_path }}/logout" style="margin:0;">
       <button class="btn ghost" type="submit">Sign out</button>
     </form>
   </div>

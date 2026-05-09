@@ -1,0 +1,21 @@
+# Caddy snippet for serving the dashboard at
+# https://anchor.joelycannoli.com/metrics
+#
+# Append to your existing site block, or use as a standalone Caddyfile.
+# Caddy will obtain a TLS cert automatically via ACME on first start.
+#
+# Pair with:
+#   WEB_BASE_PATH=/metrics
+#   WEB_BASE_URL=https://anchor.joelycannoli.com/metrics
+# in /etc/monthly-metrics.env so the FastAPI router is mounted at /metrics.
+#
+# Uses `handle` (not `handle_path`) so the /metrics prefix is preserved when
+# Caddy forwards upstream — that matches where FastAPI mounts its routes.
+
+anchor.joelycannoli.com {
+    # ... your other handle blocks for the same hostname go here ...
+
+    handle /metrics* {
+        reverse_proxy 127.0.0.1:8081
+    }
+}

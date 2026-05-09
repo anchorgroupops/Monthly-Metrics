@@ -26,6 +26,7 @@ from config.settings import (
     DASHBOARD_TREND_MONTHS,
     SESSION_COOKIE_NAME,
     SESSION_TTL_DAYS,
+    WEB_BASE_PATH,
     WEB_BASE_URL,
 )
 from src import auth, storage
@@ -59,6 +60,12 @@ def _cookie_is_secure() -> bool:
     return urlsplit(WEB_BASE_URL).scheme == "https"
 
 
+def _path(local: str) -> str:
+    """Prepend the deployment base path so redirects survive a reverse proxy
+    that mounts the app under e.g. /metrics."""
+    return f"{WEB_BASE_PATH}{local}" if WEB_BASE_PATH else local
+
+
 def _session_cookie_kwargs() -> dict:
     return {
         "key": SESSION_COOKIE_NAME,
@@ -66,6 +73,9 @@ def _session_cookie_kwargs() -> dict:
         "secure": _cookie_is_secure(),
         "samesite": "lax",
         "max_age": SESSION_TTL_DAYS * 24 * 3600,
+        # Scope the cookie to the mount point so it isn't sent to sibling apps
+        # on the same hostname.
+        "path": WEB_BASE_PATH or "/",
     }
 
 
@@ -96,8 +106,8 @@ def _safe_script_json(payload) -> str:
 @router.get("/", include_in_schema=False)
 def root(request: Request):
     if auth.current_agent(request):
-        return RedirectResponse("/dashboard", status_code=302)
-    return RedirectResponse("/login", status_code=302)
+        return RedirectResponse(_path("/dashboard"), status_code=302)
+    return RedirectResponse(_path("/login"), status_code=302)
 
 
 @router.get("/login", include_in_schema=False)
@@ -132,7 +142,7 @@ def verify(request: Request, token: str | None = None):
         )
 
     session_token = auth.start_session(agent["id"])
-    response = RedirectResponse("/dashboard", status_code=302)
+    response = RedirectResponse(_path("/dashboard"), status_code=302)
     response.set_cookie(value=session_token, **_session_cookie_kwargs())
     return response
 
@@ -142,8 +152,8 @@ def logout(request: Request):
     token = request.cookies.get(SESSION_COOKIE_NAME)
     if token:
         auth.end_session(token)
-    response = RedirectResponse("/login", status_code=302)
-    response.delete_cookie(SESSION_COOKIE_NAME)
+    response = RedirectResponse(_path("/login"), status_code=302)
+    response.delete_cookie(SESSION_COOKIE_NAME, path=WEB_BASE_PATH or "/")
     return response
 
 
@@ -153,7 +163,7 @@ def logout(request: Request):
 def dashboard(request: Request):
     agent = auth.current_agent(request)
     if not agent:
-        return RedirectResponse("/login", status_code=302)
+        return RedirectResponse(_path("/login"), status_code=302)
 
     snapshot = storage.latest_snapshot(agent["id"])
     if snapshot is None:

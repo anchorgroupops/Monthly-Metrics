@@ -11,18 +11,38 @@
 # ~/.cloudflared/<tunnel-id>.json).
 #
 # Then point a DNS record at the tunnel:
-#   cloudflared tunnel route dns monthly-metrics metrics.<your-domain>
+#   cloudflared tunnel route dns monthly-metrics anchor.joelycannoli.com
 #
 # Restart the service:
 #   sudo systemctl restart cloudflared
+#
+# IMPORTANT: also set WEB_BASE_PATH=/metrics and
+#   WEB_BASE_URL=https://anchor.joelycannoli.com/metrics
+# in /etc/monthly-metrics.env so cookies, redirects, and magic-link emails
+# all carry the prefix.
 
 tunnel: REPLACE-WITH-TUNNEL-ID
 credentials-file: /home/monthly-metrics/.cloudflared/REPLACE-WITH-TUNNEL-ID.json
 
 ingress:
-  - hostname: metrics.example.com
+  # Path-based routing: only requests under /metrics go to the dashboard.
+  # Everything else on anchor.joelycannoli.com falls through to the next rule
+  # (or your existing local services). Cloudflare Tunnel does NOT strip the
+  # /metrics prefix, so the FastAPI app is configured with root_path=/metrics
+  # to match.
+  - hostname: anchor.joelycannoli.com
+    path: /metrics(/.*)?
     service: http://127.0.0.1:8081
     originRequest:
       noTLSVerify: false
       connectTimeout: 30s
+      httpHostHeader: anchor.joelycannoli.com
+
+  # If you have other services on anchor.joelycannoli.com, add their rules
+  # here BEFORE the catch-all below.
+  # - hostname: anchor.joelycannoli.com
+  #   path: /n8n(/.*)?
+  #   service: http://127.0.0.1:5678
+
+  # Catch-all: refuse anything that didn't match an earlier rule.
   - service: http_status:404
