@@ -1,0 +1,27 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{% block title %}Anchor Metrics{% endblock %}</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    body {
+      font-family: {{ brand.font_body }};
+      background: {{ brand.color_bg }};
+      color: {{ brand.color_text }};
+    }
+    h1, h2, h3, .font-heading { font-family: {{ brand.font_heading }}; }
+    .brand-primary       { background-color: {{ brand.color_primary }}; }
+    .brand-primary-text  { color: {{ brand.color_primary }}; }
+    .brand-secondary     { background-color: {{ brand.color_secondary }}; }
+  </style>
+  {% block head_extra %}{% endblock %}
+</head>
+<body class="min-h-screen">
+  <main class="max-w-5xl mx-auto px-4 py-6">
+    {% block content %}{% endblock %}
+  </main>
+  {% block scripts %}{% endblock %}
+</body>
+</html>

@@ -15,6 +15,9 @@ config/thresholds.json.bak
 .env
 config/secrets.py
 
+# Local roster file used by the agent portal (sensitive; populate at runtime).
+config/agents.csv
+
 # Python
 __pycache__/
 *.py[cod]

@@ -1,0 +1,150 @@
+{% extends "portal/_base.html" %}
+{% block title %}{{ agent.name }} · Anchor Metrics{% endblock %}
+
+{% block head_extra %}
+<style>
+  .gauges     { display: grid; grid-template-columns: 1.5fr 1fr 1fr 1fr; gap: 16px; margin-bottom: 24px; }
+  .gauge-card { display: flex; align-items: center; justify-content: center; padding: 16px; }
+  .trend-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 18px; }
+  .trend-card h3 { font-size: 14px; font-weight: 700; margin-bottom: 10px; color: {{ brand.color_primary }}; }
+  .pill-Preferred         { background: #2ECC71; color: #fff; }
+  .pill-AtRisk            { background: #F0A500; color: #1A1A1A; }
+  .pill-NeedsImprovement  { background: #E05C4B; color: #fff; }
+  .pill-NoData            { background: #CCC;    color: #1A1A1A; }
+  @media (max-width: 720px) { .gauges { grid-template-columns: 1fr 1fr; } }
+</style>
+{% endblock %}
+
+{% block content %}
+<header class="mb-6 flex flex-wrap items-center justify-between gap-3">
+  <div>
+    <h1 class="text-2xl font-bold brand-primary-text">{{ agent.name }}</h1>
+    {% if scored %}
+      <p class="text-sm text-slate-500">
+        Period {{ scored.period }}{% if as_of %} · last refreshed {{ as_of }}{% endif %}
+      </p>
+    {% endif %}
+  </div>
+  <div class="flex items-center gap-3">
+    {% if scored %}
+      {% set status_class = 'pill-' ~ scored.overall_status|replace(' ', '') %}
+      <span class="text-xs font-bold tracking-wide px-3 py-1 rounded-full {{ status_class }}">
+        {{ scored.overall_status }}
+      </span>
+    {% endif %}
+    <form method="POST" action="{{ url_for('portal.logout') }}">
+      <button type="submit"
+              class="text-sm bg-white border border-slate-300 px-3 py-1.5 rounded-lg hover:bg-slate-50">
+        Sign out
+      </button>
+    </form>
+  </div>
+</header>
+
+{% if empty %}
+  <div class="bg-white rounded-xl shadow p-10 text-center">
+    <h2 class="text-lg font-bold brand-primary-text mb-2">No data yet</h2>
+    <p class="text-sm text-slate-500">
+      Your dashboard will populate after the next monthly ingest.
+    </p>
+  </div>
+{% else %}
+  <section class="gauges">
+    {% for m in scored.metrics_list %}
+      <div class="bg-white rounded-xl shadow gauge-card">
+        {{ gauges[m.key] | safe }}
+      </div>
+    {% endfor %}
+  </section>
+
+  <h2 class="text-base font-bold brand-primary-text mb-3">Trends — last 6 months</h2>
+  <section class="trend-grid">
+    {% for m in scored.metrics_list %}
+      <div class="bg-white rounded-xl shadow p-5 trend-card">
+        <h3>{{ m.label }}</h3>
+        <canvas data-metric="{{ m.key }}" height="180"></canvas>
+      </div>
+    {% endfor %}
+  </section>
+
+  <p class="mt-8 text-center text-xs text-slate-400">
+    Data refreshes after each monthly ingest.
+  </p>
+{% endif %}
+
+<script type="application/json" id="trend-data">{{ trend_payload | safe }}</script>
+{% endblock %}
+
+{% block scripts %}
+{% if not empty %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<script>
+(function () {
+  var raw = document.getElementById('trend-data').textContent;
+  var payload = raw ? JSON.parse(raw) : {labels: [], metrics: {}};
+
+  var accent = "{{ brand.color_primary }}";
+  var target = "{{ brand.color_secondary }}";
+
+  function fmt(value, unit) {
+    if (value === null || value === undefined) return null;
+    if (unit === 'percent') return (value * 100).toFixed(1) + '%';
+    if (unit === 'score')   return value.toFixed(1);
+    return value;
+  }
+
+  document.querySelectorAll('canvas[data-metric]').forEach(function (el) {
+    var key = el.dataset.metric;
+    var m = payload.metrics[key];
+    if (!m) return;
+
+    var datasets = [{
+      label: m.label,
+      data: m.values,
+      borderColor: accent,
+      backgroundColor: accent + '22',
+      tension: 0.3,
+      pointRadius: 4,
+      spanGaps: true,
+    }];
+    if (m.target !== null && m.target !== undefined) {
+      datasets.push({
+        label: 'Target',
+        data: payload.labels.map(function () { return m.target; }),
+        borderColor: target,
+        borderDash: [6, 4],
+        pointRadius: 0,
+        fill: false,
+      });
+    }
+
+    new Chart(el.getContext('2d'), {
+      type: 'line',
+      data: { labels: payload.labels, datasets: datasets },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+          legend: { display: false },
+          tooltip: {
+            callbacks: {
+              label: function (ctx) {
+                var f = fmt(ctx.parsed.y, m.unit);
+                return ctx.dataset.label + ': ' + (f === null ? 'N/A' : f);
+              },
+            },
+          },
+        },
+        scales: {
+          y: {
+            beginAtZero: m.unit !== 'score',
+            ticks: { callback: function (v) { return fmt(v, m.unit); } },
+          },
+        },
+      },
+    });
+  });
+})();
+</script>
+{% endif %}
+{% endblock %}
