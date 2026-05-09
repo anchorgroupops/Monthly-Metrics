@@ -13,7 +13,7 @@ from __future__ import annotations
 
 import logging
 import secrets
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 from src import storage
 
@@ -54,9 +54,7 @@ def get_agent(agent_id: str) -> dict | None:
 def create_magic_link(email: str, ttl_minutes: int) -> str:
     """Insert a single-use magic-link token. Returns the random token string."""
     token = secrets.token_urlsafe(32)
-    expires = (
-        datetime.now(timezone.utc) + timedelta(minutes=ttl_minutes)
-    ).isoformat()
+    expires = (datetime.now(UTC) + timedelta(minutes=ttl_minutes)).isoformat()
     with storage.connect() as conn:
         conn.execute(
             "INSERT INTO portal_magic_links (token, email, expires_at) VALUES (?, ?, ?)",
@@ -72,7 +70,7 @@ def consume_magic_link(token: str) -> str | None:
     """
     if not token:
         return None
-    now_iso = datetime.now(timezone.utc).isoformat()
+    now_iso = datetime.now(UTC).isoformat()
     with storage.connect() as conn:
         row = conn.execute(
             "SELECT email, expires_at, used_at FROM portal_magic_links WHERE token = ?",
@@ -81,8 +79,7 @@ def consume_magic_link(token: str) -> str | None:
         if not row or row["used_at"] is not None or row["expires_at"] < now_iso:
             return None
         conn.execute(
-            "UPDATE portal_magic_links SET used_at = ? "
-            "WHERE token = ? AND used_at IS NULL",
+            "UPDATE portal_magic_links SET used_at = ? WHERE token = ? AND used_at IS NULL",
             (now_iso, token),
         )
         return row["email"]
@@ -93,9 +90,7 @@ def consume_magic_link(token: str) -> str | None:
 
 def create_session(agent_id: str, ttl_days: int) -> str:
     token = secrets.token_urlsafe(32)
-    expires = (
-        datetime.now(timezone.utc) + timedelta(days=ttl_days)
-    ).isoformat()
+    expires = (datetime.now(UTC) + timedelta(days=ttl_days)).isoformat()
     with storage.connect() as conn:
         conn.execute(
             "INSERT INTO portal_sessions (token, agent_id, expires_at) VALUES (?, ?, ?)",
@@ -108,7 +103,7 @@ def lookup_session(token: str) -> dict | None:
     """Return agent dict for a valid session token, else None."""
     if not token:
         return None
-    now_iso = datetime.now(timezone.utc).isoformat()
+    now_iso = datetime.now(UTC).isoformat()
     with storage.connect() as conn:
         row = conn.execute(
             """

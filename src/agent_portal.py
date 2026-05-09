@@ -23,14 +23,11 @@ import json
 import logging
 import os
 import smtplib
-from datetime import datetime
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 
 from flask import (
     Blueprint,
-    abort,
-    current_app,
     make_response,
     redirect,
     render_template,
@@ -65,11 +62,13 @@ PORTAL_COOKIE_NAME = "anchor_portal"
 MAGIC_LINK_TTL_MINUTES = int(os.environ.get("PORTAL_MAGIC_LINK_TTL_MINUTES", "15"))
 SESSION_TTL_DAYS = int(os.environ.get("PORTAL_SESSION_TTL_DAYS", "30"))
 TREND_WINDOW_MONTHS = int(os.environ.get("PORTAL_TREND_MONTHS", "6"))
-PORTAL_BASE_URL = os.environ.get(
-    "PORTAL_BASE_URL", ""
-).rstrip("/")  # e.g. https://anchor.joelycannoli.com — empty falls back to request.url_root
+PORTAL_BASE_URL = os.environ.get("PORTAL_BASE_URL", "").rstrip(
+    "/"
+)  # e.g. https://anchor.joelycannoli.com — empty falls back to request.url_root
 DEV_LOG_MAGIC_LINK = os.environ.get("DEV_LOG_MAGIC_LINK", "").lower() in (
-    "1", "true", "yes",
+    "1",
+    "true",
+    "yes",
 )
 
 MAGIC_LINK_SUBJECT = "Sign in to your Anchor Group dashboard"
@@ -114,30 +113,43 @@ def _current_agent() -> dict | None:
 
 
 def _render_magic_email(magic_url: str) -> str:
-    return f"""<!DOCTYPE html>
-<html><body style="font-family: Helvetica, Arial, sans-serif; background:{BRAND['color_bg']}; padding:32px;">
-  <table cellpadding="0" cellspacing="0" border="0" width="100%" style="max-width:520px;margin:0 auto;background:#fff;border-radius:10px;">
-    <tr><td style="padding:28px 32px;">
-      <h1 style="font-size:20px;color:{BRAND['color_primary']};margin:0 0 12px;">Anchor Group Dashboard</h1>
-      <p style="font-size:15px;line-height:1.5;color:{BRAND['color_text']};margin:0 0 18px;">
-        Click the button below to sign in. This link expires in
-        {MAGIC_LINK_TTL_MINUTES} minutes and can only be used once.
-      </p>
-      <p style="margin:24px 0;">
-        <a href="{magic_url}" style="background:{BRAND['color_primary']};color:#fff;text-decoration:none;padding:12px 24px;border-radius:7px;font-weight:600;display:inline-block;">
-          Sign in
-        </a>
-      </p>
-      <p style="font-size:12px;color:#888;line-height:1.4;margin:24px 0 0;">
-        If you didn't request this, you can ignore this email — no action is needed.
-      </p>
-      <p style="font-size:11px;color:#aaa;word-break:break-all;margin:18px 0 0;">
-        Or copy this URL into your browser:<br>{magic_url}
-      </p>
-    </td></tr>
-  </table>
-</body></html>
-"""
+    body_style = (
+        f"font-family: Helvetica, Arial, sans-serif;background:{BRAND['color_bg']};padding:32px;"
+    )
+    table_style = "max-width:520px;margin:0 auto;background:#fff;border-radius:10px;"
+    btn_style = (
+        f"background:{BRAND['color_primary']};color:#fff;text-decoration:none;"
+        "padding:12px 24px;border-radius:7px;font-weight:600;display:inline-block;"
+    )
+    h1_style = f"font-size:20px;color:{BRAND['color_primary']};margin:0 0 12px;"
+    body_p_style = f"font-size:15px;line-height:1.5;color:{BRAND['color_text']};margin:0 0 18px;"
+    return (
+        "<!DOCTYPE html>\n"
+        f'<html><body style="{body_style}">\n'
+        '  <table cellpadding="0" cellspacing="0" border="0" width="100%"'
+        f' style="{table_style}">\n'
+        '    <tr><td style="padding:28px 32px;">\n'
+        f'      <h1 style="{h1_style}">Anchor Group Dashboard</h1>\n'
+        f'      <p style="{body_p_style}">\n'
+        "        Click the button below to sign in. This link expires in\n"
+        f"        {MAGIC_LINK_TTL_MINUTES} minutes and can only be used once.\n"
+        "      </p>\n"
+        '      <p style="margin:24px 0;">\n'
+        f'        <a href="{magic_url}" style="{btn_style}">Sign in</a>\n'
+        "      </p>\n"
+        '      <p style="font-size:12px;color:#888;line-height:1.4;'
+        'margin:24px 0 0;">\n'
+        "        If you didn't request this, you can ignore this email "
+        "— no action is needed.\n"
+        "      </p>\n"
+        '      <p style="font-size:11px;color:#aaa;word-break:break-all;'
+        'margin:18px 0 0;">\n'
+        f"        Or copy this URL into your browser:<br>{magic_url}\n"
+        "      </p>\n"
+        "    </td></tr>\n"
+        "  </table>\n"
+        "</body></html>\n"
+    )
 
 
 def _send_magic_email(to_addr: str, html: str) -> None:
@@ -191,7 +203,8 @@ def _issue_magic_link(email: str) -> bool:
     if DEV_LOG_MAGIC_LINK and not (SMTP_USER and SMTP_PASSWORD):
         log.warning(
             "DEV mode — magic link for %s:\n  %s",
-            agent["email"], magic_url,
+            agent["email"],
+            magic_url,
         )
         return True
 
@@ -212,8 +225,8 @@ _JSON_SCRIPT_ESCAPES = {
     ord("<"): "\\u003c",
     ord(">"): "\\u003e",
     ord("&"): "\\u0026",
-    0x2028:    "\\u2028",
-    0x2029:    "\\u2029",
+    0x2028: "\\u2028",
+    0x2029: "\\u2029",
 }
 
 
@@ -240,15 +253,16 @@ def _build_trend_payload(agent_id: str, thresholds: dict) -> dict:
         period_set.update(p for (p, _) in rows)
 
     labels = sorted(period_set)
-    out = {"labels": labels, "metrics": {}}
+    metrics_out: dict[str, dict] = {}
     for key in keys:
         cfg = metric_cfg.get(key, {})
-        out["metrics"][key] = {
-            "label":  cfg.get("label", key),
-            "unit":   cfg.get("unit", ""),
+        metrics_out[key] = {
+            "label": cfg.get("label", key),
+            "unit": cfg.get("unit", ""),
             "target": cfg.get("target"),
             "values": [histories[key].get(p) for p in labels],
         }
+    out: dict = {"labels": labels, "metrics": metrics_out}
     return out
 
 
@@ -258,8 +272,7 @@ def _build_trend_payload(agent_id: str, thresholds: dict) -> dict:
 def _latest_period_for(agent_id: str) -> str | None:
     with storage.connect() as conn:
         row = conn.execute(
-            "SELECT period FROM agent_periods WHERE agent_id = ? "
-            "ORDER BY period DESC LIMIT 1",
+            "SELECT period FROM agent_periods WHERE agent_id = ? ORDER BY period DESC LIMIT 1",
             (agent_id,),
         ).fetchone()
     return row["period"] if row else None
@@ -270,8 +283,7 @@ def _agent_data_for(agent_id: str, period: str) -> dict:
     agent + period out of the stored long-form metric rows."""
     with storage.connect() as conn:
         rows = conn.execute(
-            "SELECT metric_key, value FROM agent_periods "
-            "WHERE agent_id = ? AND period = ?",
+            "SELECT metric_key, value FROM agent_periods WHERE agent_id = ? AND period = ?",
             (agent_id, period),
         ).fetchall()
         meta = conn.execute(
@@ -281,9 +293,9 @@ def _agent_data_for(agent_id: str, period: str) -> dict:
 
     record = {
         "agent_id": agent_id,
-        "name":     meta["name"] if meta else "",
-        "email":    meta["email"] if meta else "",
-        "period":   period,
+        "name": meta["name"] if meta else "",
+        "email": meta["email"] if meta else "",
+        "period": period,
     }
     for r in rows:
         record[r["metric_key"]] = r["value"]
@@ -314,7 +326,9 @@ def login():
         email = (request.form.get("email") or "").strip()
         if not email:
             return render_template(
-                "portal/login.html", brand=BRAND, error="Please enter an email.",
+                "portal/login.html",
+                brand=BRAND,
+                error="Please enter an email.",
             )
         try:
             _issue_magic_link(email)
@@ -322,7 +336,9 @@ def login():
             # Don't leak SMTP errors to the user. Operator log already has it.
             log.exception("Magic-link issuance failed for %s", email)
         return render_template(
-            "portal/verify_sent.html", brand=BRAND, email=email,
+            "portal/verify_sent.html",
+            brand=BRAND,
+            email=email,
         )
     return render_template("portal/login.html", brand=BRAND, error=None)
 
