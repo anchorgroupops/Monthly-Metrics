@@ -50,9 +50,8 @@ AGENTS = [
     # populate it without risk of committing real agent data.
 ]
 
-# ── Brand (placeholder — will be updated from brand template) ─────────────────
+# ── Brand ─────────────────────────────────────────────────────────────────────
 BRAND = {
-    # Colors — replace hex values once brand template is uploaded
     # ── Brand Colors (The Anchor Team — Color & Typography Deck B) ───────────────
     # Clear Water  = deep teal, primary brand color (30% usage per 60-30-10 rule)
     # Pearl Aqua   = lighter teal, accent color (10% usage)
