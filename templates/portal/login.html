@@ -1,0 +1,26 @@
+{% extends "portal/_base.html" %}
+{% block title %}Sign in · Anchor Metrics{% endblock %}
+{% block content %}
+<div class="max-w-md mx-auto mt-12 bg-white rounded-xl shadow p-8">
+  <h1 class="text-xl font-bold brand-primary-text mb-2">Anchor Metrics</h1>
+  <p class="text-sm text-slate-500 mb-6">
+    Enter your work email — we'll send you a one-time sign-in link.
+  </p>
+  {% if error %}
+  <div class="mb-4 px-4 py-3 rounded-lg text-sm bg-rose-100 text-rose-900 border border-rose-200">
+    {{ error }}
+  </div>
+  {% endif %}
+  <form method="POST" action="{{ url_for('portal.login') }}" class="space-y-4">
+    <label class="block">
+      <span class="text-sm font-medium text-slate-700">Work email</span>
+      <input type="email" name="email" autofocus required autocomplete="email"
+             class="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-teal-500">
+    </label>
+    <button type="submit"
+            class="w-full brand-primary text-white font-semibold py-2.5 rounded-lg hover:opacity-90">
+      Email me a sign-in link
+    </button>
+  </form>
+</div>
+{% endblock %}

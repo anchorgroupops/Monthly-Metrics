@@ -120,6 +120,15 @@ def create_app() -> Flask:
     _reap_stale_runs()
 
     _register_routes(app, limiter)
+
+    # Per-agent self-service portal at /metrics. CSRF-exempt: it uses its own
+    # HTTP-only cookie (not Flask session), and the only POST surface is
+    # /metrics/login which at worst triggers an email to the user themselves.
+    from src.agent_portal import bp as portal_bp
+
+    csrf.exempt(portal_bp)
+    app.register_blueprint(portal_bp)
+
     return app
 
 
