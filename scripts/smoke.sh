@@ -4,7 +4,7 @@
 
 set -euo pipefail
 
-URL="${URL:-https://anchor.joelycannoli.com}"
+URL="${URL:-https://metrics.joelycannoli.com}"
 
 echo "→ healthz JSON…"
 HEALTH=$(curl -fsS "$URL/healthz")

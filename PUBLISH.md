@@ -1,4 +1,4 @@
-# Publishing the dashboard at anchor.joelycannoli.com
+# Publishing the dashboard at metrics.joelycannoli.com
 
 This runbook assumes:
 
@@ -53,7 +53,7 @@ https://dash.cloudflare.com/argotunnel?...
 The script then:
 
 1. Creates a tunnel named `anchor`.
-2. Writes `~/.cloudflared/config.yml` mapping `anchor.joelycannoli.com → http://127.0.0.1:5050`.
+2. Writes `~/.cloudflared/config.yml` mapping `metrics.joelycannoli.com → http://127.0.0.1:5050`.
 3. Creates a CNAME via the Cloudflare API.
 4. Installs `cloudflared` as a systemd service and starts it.
 
@@ -68,15 +68,15 @@ HOSTNAME_FQDN=metrics.joelycannoli.com scripts/install_tunnel.sh
 From your laptop / phone:
 
 ```bash
-curl -I https://anchor.joelycannoli.com/healthz
+curl -I https://metrics.joelycannoli.com/healthz
 # HTTP/2 200
 
-curl -I https://anchor.joelycannoli.com/login
+curl -I https://metrics.joelycannoli.com/login
 # HTTP/2 200
 # set-cookie: ...; Secure; HttpOnly; SameSite=Lax
 ```
 
-In a browser at `https://anchor.joelycannoli.com`:
+In a browser at `https://metrics.joelycannoli.com`:
 
 1. Login form renders with a green padlock (Cloudflare's TLS cert).
 2. Sign in with `ADMIN_PASSWORD` from `.env`.
@@ -120,10 +120,10 @@ rm ~/.cloudflared/cert.pem
 scripts/install_tunnel.sh   # re-do the browser flow, pick joelycannoli.com
 ```
 
-**`502 Bad Gateway` from anchor.joelycannoli.com**
+**`502 Bad Gateway` from metrics.joelycannoli.com**
 DNS works, tunnel works, but the dashboard service isn't running. `sudo systemctl status anchor-dashboard`.
 
-**`530` from anchor.joelycannoli.com**
+**`530` from metrics.joelycannoli.com**
 Cloudflare can't reach the tunnel. `sudo systemctl status cloudflared`. If down, `sudo systemctl restart cloudflared`.
 
 **`CSRF token missing` after login**

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Anchor Group Monthly Metrics — Cloudflare Tunnel installer.
 #
-# Publishes the dashboard at https://anchor.joelycannoli.com via Cloudflare
+# Publishes the dashboard at https://metrics.joelycannoli.com via Cloudflare
 # Tunnel (no port-forwarding, automatic TLS at the Cloudflare edge).
 #
 # Prerequisites:
@@ -15,7 +15,7 @@
 set -euo pipefail
 
 TUNNEL_NAME="${TUNNEL_NAME:-anchor}"
-HOSTNAME="${HOSTNAME_FQDN:-anchor.joelycannoli.com}"
+HOSTNAME="${HOSTNAME_FQDN:-metrics.joelycannoli.com}"
 LOCAL_SERVICE="${LOCAL_SERVICE:-http://127.0.0.1:5050}"
 
 log()  { printf "\n[tunnel] %s\n" "$*"; }

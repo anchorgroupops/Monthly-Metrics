@@ -4,12 +4,12 @@
 # Runs every check that matters for the Pi → Cloudflare → browser path and
 # prints a green/red status line for each. Safe to run any time.
 #
-#   scripts/diagnose.sh                       # checks anchor.joelycannoli.com
+#   scripts/diagnose.sh                       # checks metrics.joelycannoli.com
 #   HOSTNAME_FQDN=metrics.foo.com scripts/diagnose.sh
 
 set -u  # don't `set -e` — we want every check to run even if one fails
 
-HOSTNAME="${HOSTNAME_FQDN:-anchor.joelycannoli.com}"
+HOSTNAME="${HOSTNAME_FQDN:-metrics.joelycannoli.com}"
 TUNNEL_NAME="${TUNNEL_NAME:-anchor}"
 LOCAL_BIND="${LOCAL_BIND:-127.0.0.1:5050}"
 
