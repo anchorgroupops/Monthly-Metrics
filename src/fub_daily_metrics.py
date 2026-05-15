@@ -10,6 +10,7 @@ engine (response time, appointment rate) use the same definitions;
 supplemental activity metrics (call volume, text activity, contact rate)
 are added for daily visibility.
 """
+
 from __future__ import annotations
 
 import base64
@@ -17,7 +18,7 @@ import logging
 import os
 import sqlite3
 import time
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 import requests
@@ -28,11 +29,11 @@ log = logging.getLogger(__name__)
 
 # Zillow Preferred targets (used for color-coding on dashboard)
 TARGETS = {
-    "response_time_sec": 300,       # < 5 minutes = green
-    "contact_rate": 0.80,           # > 80% = green
-    "appointment_rate": 0.20,       # > 20% = green
-    "calls_per_lead": 2.0,         # >= 2 calls per lead = green
-    "texts_per_lead": 3.0,         # >= 3 texts per lead = green
+    "response_time_sec": 300,  # < 5 minutes = green
+    "contact_rate": 0.80,  # > 80% = green
+    "appointment_rate": 0.20,  # > 20% = green
+    "calls_per_lead": 2.0,  # >= 2 calls per lead = green
+    "texts_per_lead": 3.0,  # >= 3 texts per lead = green
 }
 
 ZILLOW_SOURCE_ID = 14
@@ -56,8 +57,7 @@ def _get(endpoint: str, params: dict | None = None) -> dict:
     url = f"{FUB_BASE_URL}{endpoint}"
     headers = _auth_header()
     for attempt in range(3):
-        resp = requests.get(url, headers=headers, params=params,
-                            timeout=FUB_TIMEOUT_SECONDS)
+        resp = requests.get(url, headers=headers, params=params, timeout=FUB_TIMEOUT_SECONDS)
         if resp.status_code == 429:
             wait = int(resp.headers.get("Retry-After", 5))
             log.warning("FUB 429 — waiting %ds (attempt %d)", wait, attempt + 1)
@@ -92,14 +92,14 @@ def _paginate(endpoint: str, params: dict, collection_key: str) -> list[dict]:
 def fetch_active_agents() -> list[dict]:
     """Fetch all active agents from FUB."""
     users = _paginate("/users", {}, "users")
-    return [u for u in users
-            if u.get("status") == "Active"
-            and u.get("role") in ("Agent", "Broker")]
+    return [
+        u for u in users if u.get("status") == "Active" and u.get("role") in ("Agent", "Broker")
+    ]
 
 
 def fetch_agent_leads(agent_id: int, days: int = 30) -> list[dict]:
     """Fetch leads assigned to an agent created in the last N days."""
-    since = (datetime.now(timezone.utc) - timedelta(days=days)).strftime("%Y-%m-%d")
+    since = (datetime.now(UTC) - timedelta(days=days)).strftime("%Y-%m-%d")
     return _paginate(
         "/people",
         {
@@ -114,10 +114,9 @@ def fetch_agent_leads(agent_id: int, days: int = 30) -> list[dict]:
 
 def is_zillow_lead(lead: dict) -> bool:
     """Check if a lead came from Zillow Preferred."""
-    return (
-        lead.get("sourceId") == ZILLOW_SOURCE_ID
-        or (lead.get("source") or "").lower().startswith("zillow")
-    )
+    return lead.get("sourceId") == ZILLOW_SOURCE_ID or (
+        lead.get("source") or ""
+    ).lower().startswith("zillow")
 
 
 # ── Metric calculations ─────────────────────────────────────────
@@ -175,7 +174,7 @@ def calc_agent_metrics(leads: list[dict]) -> dict:
     Calculate all daily metrics for one agent's leads.
     Only considers Zillow Preferred leads.
     """
-    zillow_leads = [l for l in leads if is_zillow_lead(l)]
+    zillow_leads = [ld for ld in leads if is_zillow_lead(ld)]
     total = len(zillow_leads)
 
     if total == 0:
@@ -203,31 +202,29 @@ def calc_agent_metrics(leads: list[dict]) -> dict:
 
     rt_avg = sum(response_times) / len(response_times) if response_times else None
     rt_sorted = sorted(response_times)
-    rt_median = (
-        rt_sorted[len(rt_sorted) // 2] if rt_sorted else None
-    )
+    rt_median = rt_sorted[len(rt_sorted) // 2] if rt_sorted else None
 
     # Contact rate
-    contacted = sum(1 for l in zillow_leads if l.get("contacted") == 1)
+    contacted = sum(1 for ld in zillow_leads if ld.get("contacted") == 1)
     contact_rate = contacted / total
 
     # Call volume
-    calls_out = sum(l.get("callsOutgoing", 0) or 0 for l in zillow_leads)
+    calls_out = sum(ld.get("callsOutgoing", 0) or 0 for ld in zillow_leads)
     calls_per_lead = calls_out / total
 
     # Text volume
-    texts = sum(l.get("textsSent", 0) or 0 for l in zillow_leads)
+    texts = sum(ld.get("textsSent", 0) or 0 for ld in zillow_leads)
     texts_per_lead = texts / total
 
     # Email volume
-    emails = sum(l.get("emailsSent", 0) or 0 for l in zillow_leads)
+    emails = sum(ld.get("emailsSent", 0) or 0 for ld in zillow_leads)
 
     # Appointment rate (stageId >= 29 means "Appointment set" or beyond)
-    appointments = sum(1 for l in zillow_leads if (l.get("stageId") or 0) >= 29)
+    appointments = sum(1 for ld in zillow_leads if (ld.get("stageId") or 0) >= 29)
     appointment_rate = appointments / total
 
     # Lead acceptance (moved past "New" stage, stageId > 26)
-    accepted = sum(1 for l in zillow_leads if (l.get("stageId") or 0) > 26)
+    accepted = sum(1 for ld in zillow_leads if (ld.get("stageId") or 0) > 26)
     lead_acceptance_rate = accepted / total
 
     return {
@@ -268,42 +265,44 @@ def fetch_daily_metrics(days: int = 30) -> list[dict]:
             metrics = calc_agent_metrics(leads)
             log.info(
                 "  %s: %d Zillow leads, %d total leads",
-                name, metrics["total_zillow_leads"], metrics["total_all_leads"],
+                name,
+                metrics["total_zillow_leads"],
+                metrics["total_all_leads"],
             )
         except Exception as e:
             log.error("Failed to fetch metrics for %s: %s", name, e)
             metrics = calc_agent_metrics([])  # Empty metrics on failure
 
-        results.append({
-            "agent_id": agent_id,
-            "agent_name": name,
-            "agent_email": email,
-            "metrics": metrics,
-        })
+        results.append(
+            {
+                "agent_id": agent_id,
+                "agent_name": name,
+                "agent_email": email,
+                "metrics": metrics,
+            }
+        )
 
     return results
 
 
 def calc_team_averages(agent_results: list[dict]) -> dict:
     """Calculate team-wide averages from individual agent results."""
-    agents_with_data = [
-        r for r in agent_results
-        if r["metrics"]["total_zillow_leads"] > 0
-    ]
+    agents_with_data = [r for r in agent_results if r["metrics"]["total_zillow_leads"] > 0]
     if not agents_with_data:
         return calc_agent_metrics([])
 
     n = len(agents_with_data)
-    rts = [r["metrics"]["response_time_avg"] for r in agents_with_data
-           if r["metrics"]["response_time_avg"] is not None]
+    rts = [
+        r["metrics"]["response_time_avg"]
+        for r in agents_with_data
+        if r["metrics"]["response_time_avg"] is not None
+    ]
 
     return {
         "total_zillow_leads": sum(r["metrics"]["total_zillow_leads"] for r in agents_with_data),
         "total_all_leads": sum(r["metrics"]["total_all_leads"] for r in agents_with_data),
         "response_time_avg": round(sum(rts) / len(rts), 1) if rts else None,
-        "contact_rate": round(
-            sum(r["metrics"]["contact_rate"] for r in agents_with_data) / n, 3
-        ),
+        "contact_rate": round(sum(r["metrics"]["contact_rate"] for r in agents_with_data) / n, 3),
         "calls_outgoing": sum(r["metrics"]["calls_outgoing"] for r in agents_with_data),
         "calls_per_lead": round(
             sum(r["metrics"]["calls_per_lead"] for r in agents_with_data) / n, 2
@@ -351,6 +350,7 @@ CREATE TABLE IF NOT EXISTS daily_snapshots (
 def save_daily_snapshot(agent_results: list[dict], db_path: str | None = None):
     """Save daily metrics snapshot to SQLite."""
     from config.settings import BASE_DIR
+
     if db_path is None:
         db_path = os.path.join(BASE_DIR, "data", "metrics.db")
 
@@ -372,12 +372,20 @@ def save_daily_snapshot(agent_results: list[dict], db_path: str | None = None):
                 appointment_rate, lead_acceptance_rate)
                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (
-                today, r["agent_id"], r["agent_name"],
-                m["total_zillow_leads"], m["total_all_leads"],
-                m["response_time_avg"], m["contact_rate"],
-                m["calls_outgoing"], m["calls_per_lead"],
-                m["texts_sent"], m["texts_per_lead"], m["emails_sent"],
-                m["appointment_rate"], m["lead_acceptance_rate"],
+                today,
+                r["agent_id"],
+                r["agent_name"],
+                m["total_zillow_leads"],
+                m["total_all_leads"],
+                m["response_time_avg"],
+                m["contact_rate"],
+                m["calls_outgoing"],
+                m["calls_per_lead"],
+                m["texts_sent"],
+                m["texts_per_lead"],
+                m["emails_sent"],
+                m["appointment_rate"],
+                m["lead_acceptance_rate"],
             ),
         )
 

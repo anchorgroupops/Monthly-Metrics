@@ -277,17 +277,13 @@ def cmd_send(args) -> int:
 def cmd_agent(args) -> int:
     return cmd_review(args)
 
-
-# -- Mode: migrate -------------------------------------------------------------
-
-
-
+    # -- Mode: migrate -------------------------------------------------------------
 
     """Pull daily FUB metrics and store snapshot."""
-    from src.fub_daily_metrics import fetch_daily_metrics, save_daily_snapshot, calc_team_averages
-    import json
+    from src.fub_daily_metrics import calc_team_averages, fetch_daily_metrics, save_daily_snapshot
 
-    log.info("Fetching daily FUB metrics...")
+    logger = logging.getLogger(__name__)
+    logger.info("Fetching daily FUB metrics...")
     results = fetch_daily_metrics(days=30)
     save_daily_snapshot(results)
     team = calc_team_averages(results)
@@ -300,16 +296,22 @@ def cmd_agent(args) -> int:
         print(f"  Team avg response time: {team['response_time_avg']}s")
     if team.get("contact_rate") is not None:
         print(f"  Team avg contact rate: {team['contact_rate'] * 100:.1f}%")
-    print(f"  Snapshot saved to SQLite.\n")
+    print("  Snapshot saved to SQLite.\n")
     return 0
-
 
 
 def cmd_daily(args) -> int:
     """Pull daily FUB metrics and store snapshot."""
-    from src.fub_daily_metrics import fetch_daily_metrics, save_daily_snapshot, calc_team_averages
+    import logging
 
-    log.info("Fetching daily FUB metrics...")
+    from src.fub_daily_metrics import (
+        calc_team_averages,
+        fetch_daily_metrics,
+        save_daily_snapshot,
+    )
+
+    logger = logging.getLogger(__name__)
+    logger.info("Fetching daily FUB metrics...")
     results = fetch_daily_metrics(days=30)
     save_daily_snapshot(results)
     team = calc_team_averages(results)
@@ -329,6 +331,7 @@ def cmd_daily(args) -> int:
         print(f"  Team avg appointment rate: {ar * 100:.1f}%")
     print("  Snapshot saved to SQLite.\n")
     return 0
+
 
 def cmd_migrate(args) -> int:
     """Run pending schema migrations against data/metrics.db."""
@@ -426,7 +429,17 @@ def main() -> int:
     )
     parser.add_argument(
         "--mode",
-        choices=["research", "pull", "upload", "review", "draft", "dashboard", "send", "migrate", "daily"],
+        choices=[
+            "research",
+            "pull",
+            "upload",
+            "review",
+            "draft",
+            "dashboard",
+            "send",
+            "migrate",
+            "daily",
+        ],
         help="Execution mode",
     )
     parser.add_argument(

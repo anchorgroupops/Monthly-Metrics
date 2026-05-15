@@ -3,12 +3,13 @@ Daily metrics dashboard routes.
 
 Registered as a blueprint in dashboard.py's create_app().
 """
+
 from __future__ import annotations
 
 import logging
 from datetime import datetime
 
-from flask import Blueprint, redirect, render_template, request, session, url_for
+from flask import Blueprint, redirect, render_template, session, url_for
 
 from config.settings import BRAND
 
