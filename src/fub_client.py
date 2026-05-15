@@ -360,10 +360,7 @@ def _first_contact_seconds(person: dict) -> float | None:
     if created is None:
         return None
 
-    candidates = [
-        _parse(person.get(k))
-        for k in ("firstCall", "lastSentText", "lastSentEmail")
-    ]
+    candidates = [_parse(person.get(k)) for k in ("firstCall", "lastSentText", "lastSentEmail")]
     valid = [c for c in candidates if c is not None and c >= created]
     if not valid:
         return None
@@ -466,12 +463,11 @@ def mock_agents(period: str | None = None) -> list[dict]:
             "period": period_label,
             "start_date": "2026-04-01",
             "end_date": "2026-04-30",
-            "speed_to_action": 210.0,   # 3.5 min — green
-            "work_with_rate": 0.55,     # green
-            "csat": 0.91,               # green
-            "appt_set_rate": 0.65,      # green
-            "appt_met_rate": 0.78,      # green
-
+            "speed_to_action": 210.0,  # 3.5 min — green
+            "work_with_rate": 0.55,  # green
+            "csat": 0.91,  # green
+            "appt_set_rate": 0.65,  # green
+            "appt_met_rate": 0.78,  # green
         },
         {
             "agent_id": "mock-002",
@@ -480,12 +476,11 @@ def mock_agents(period: str | None = None) -> list[dict]:
             "period": period_label,
             "start_date": "2026-04-01",
             "end_date": "2026-04-30",
-            "speed_to_action": 480.0,   # 8 min — yellow
-            "work_with_rate": 0.42,     # yellow
-            "csat": 0.78,               # yellow
-            "appt_set_rate": 0.52,      # yellow
-            "appt_met_rate": 0.58,      # yellow
-
+            "speed_to_action": 480.0,  # 8 min — yellow
+            "work_with_rate": 0.42,  # yellow
+            "csat": 0.78,  # yellow
+            "appt_set_rate": 0.52,  # yellow
+            "appt_met_rate": 0.58,  # yellow
         },
         {
             "agent_id": "mock-003",
@@ -494,11 +489,10 @@ def mock_agents(period: str | None = None) -> list[dict]:
             "period": period_label,
             "start_date": "2026-04-01",
             "end_date": "2026-04-30",
-            "speed_to_action": 750.0,   # 12.5 min — red
-            "work_with_rate": 0.31,     # red
-            "csat": 0.72,               # red
-            "appt_set_rate": 0.38,      # red
-            "appt_met_rate": 0.45,      # red
-
+            "speed_to_action": 750.0,  # 12.5 min — red
+            "work_with_rate": 0.31,  # red
+            "csat": 0.72,  # red
+            "appt_set_rate": 0.38,  # red
+            "appt_met_rate": 0.45,  # red
         },
     ]

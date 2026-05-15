@@ -277,11 +277,19 @@ def fetch_calls_for_agent(assigned_user_id: str, created_after: str) -> list[dic
         except requests.HTTPError as exc:
             status = exc.response.status_code if exc.response is not None else None
             if status in (404, 403):
-                log.warning("/calls returned %s for agent %s — falling back to person aggregates", status, assigned_user_id)
+                log.warning(
+                    "/calls returned %s for agent %s — falling back to person aggregates",
+                    status,
+                    assigned_user_id,
+                )
                 return []
             raise
         except Exception as exc:
-            log.warning("/calls fetch failed for agent %s (%s) — falling back to person aggregates", assigned_user_id, exc)
+            log.warning(
+                "/calls fetch failed for agent %s (%s) — falling back to person aggregates",
+                assigned_user_id,
+                exc,
+            )
             return []
 
         calls = data.get("calls") or []
@@ -329,11 +337,19 @@ def fetch_appointments_for_agent(assigned_user_id: str, created_after: str) -> l
         except requests.HTTPError as exc:
             status = exc.response.status_code if exc.response is not None else None
             if status in (404, 403):
-                log.warning("/appointments returned %s for agent %s — falling back to stage data", status, assigned_user_id)
+                log.warning(
+                    "/appointments returned %s for agent %s — falling back to stage data",
+                    status,
+                    assigned_user_id,
+                )
                 return []
             raise
         except Exception as exc:
-            log.warning("/appointments fetch failed for agent %s (%s) — falling back to stage data", assigned_user_id, exc)
+            log.warning(
+                "/appointments fetch failed for agent %s (%s) — falling back to stage data",
+                assigned_user_id,
+                exc,
+            )
             return []
 
         appts = data.get("appointments") or []
@@ -470,15 +486,16 @@ def calculate_agent_metrics(
     if calls is not None:
         call_volume = len(calls)
         conversations_2min = sum(
-            1 for c in calls
-            if (float(c.get("duration") or c.get("durationSeconds") or 0)) >= CONVERSATION_DURATION_SECONDS
+            1
+            for c in calls
+            if float(c.get("duration") or c.get("durationSeconds") or 0)
+            >= CONVERSATION_DURATION_SECONDS
         )
     else:
         # Fallback: person-level aggregates (cumulative since lead creation)
         call_volume = sum(int(p.get("callsOutgoing") or 0) for p in zillow_people)
         conversations_2min = sum(
-            1 for p in zillow_people
-            if _last_call_duration(p) >= CONVERSATION_DURATION_SECONDS
+            1 for p in zillow_people if _last_call_duration(p) >= CONVERSATION_DURATION_SECONDS
         )
 
     # ── Appointment metrics: dedicated /appointments endpoint preferred ───────
