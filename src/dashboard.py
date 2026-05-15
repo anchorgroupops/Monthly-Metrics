@@ -129,6 +129,7 @@ def create_app() -> Flask:
     csrf.exempt(portal_bp)
 
     from src.dashboard_daily import bp as daily_bp
+
     app.register_blueprint(daily_bp)
     app.register_blueprint(portal_bp)
 
