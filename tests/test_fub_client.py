@@ -392,7 +392,7 @@ class TestFetchAllAgents:
             [{"name": "Alice", "email": "alice@x.com", "fub_agent_id": "100"}],
         )
 
-        # 4 Zillow leads: 2 accepted, 2 with appts set, 1 met
+        # 4 Zillow leads, 3 accepted; 2 appointments set (1 completed) from /appointments
         responses.get(
             "https://api.example.com/people",
             json={
@@ -401,23 +401,23 @@ class TestFetchAllAgents:
                     {
                         "id": 1,
                         "sourceId": 14,
-                        "stageId": 28,  # Contacted — accepted
+                        "stageId": 28,
                         "created": "2026-04-01T10:00:00Z",
-                        "firstCall": "2026-04-01T10:04:00Z",  # 240s
+                        "firstCall": "2026-04-01T10:04:00Z",   # 240s
                     },
                     {
                         "id": 2,
                         "sourceId": 14,
-                        "stageId": 29,  # Appt Set — accepted + appt
+                        "stageId": 28,
                         "created": "2026-04-02T10:00:00Z",
-                        "firstCall": "2026-04-02T10:05:00Z",  # 300s
+                        "firstCall": "2026-04-02T10:05:00Z",   # 300s
                     },
                     {
                         "id": 3,
                         "sourceId": 14,
-                        "stageId": 30,  # Met — accepted + appt + met
+                        "stageId": 28,
                         "created": "2026-04-03T10:00:00Z",
-                        "firstCall": "2026-04-03T10:06:00Z",  # 360s
+                        "firstCall": "2026-04-03T10:06:00Z",   # 360s
                     },
                     {
                         "id": 4,
@@ -425,6 +425,17 @@ class TestFetchAllAgents:
                         "stageId": 26,  # New — not accepted
                         "created": "2026-04-04T10:00:00Z",
                     },
+                ],
+            },
+            status=200,
+        )
+        responses.get(
+            "https://api.example.com/appointments",
+            json={
+                "_metadata": {"total": 2},
+                "appointments": [
+                    {"id": 10, "userId": "100", "outcome": "Completed"},
+                    {"id": 11, "userId": "100", "outcome": "No Show"},
                 ],
             },
             status=200,
@@ -438,13 +449,12 @@ class TestFetchAllAgents:
         assert agent["period"] == "April 2026"
         # 3 of 4 accepted (stageId > 26)
         assert agent["work_with_rate"] == pytest.approx(0.75)
-        # 2 of 4 had appts set (stageId in 29,30)
+        # 2 appointments / 4 leads = 0.5
         assert agent["appt_set_rate"] == pytest.approx(0.5)
-        # 1 of 2 appt leads met (stageId == 30)
+        # 1 of 2 appointments completed
         assert agent["appt_met_rate"] == pytest.approx(0.5)
         # median of 240, 300, 360 = 300s
         assert agent["speed_to_action"] == pytest.approx(300.0)
-        # csat not available from people data
         assert agent["csat"] is None
 
     @responses.activate
@@ -463,7 +473,9 @@ class TestFetchAllAgents:
         )
         mocker.patch.object(fub_client.time, "sleep")
 
+        # people fetch fails → null record; appointments never reached
         responses.get("https://api.example.com/people", status=500)
+        responses.get("https://api.example.com/appointments", json={"appointments": []}, status=200)
 
         result = fub_client.fetch_all_agents()
 
@@ -481,7 +493,7 @@ class TestComputeMonthlyMetrics:
         from src.fub_client import _compute_monthly_metrics
 
         cfg = {"fub_agent_id": "100", "name": "Alice", "email": "alice@x.com"}
-        out = _compute_monthly_metrics([], cfg, "April 2026", "2026-04-01", "2026-04-30")
+        out = _compute_monthly_metrics([], [], cfg, "April 2026", "2026-04-01", "2026-04-30")
 
         assert out["speed_to_action"] is None
         assert out["work_with_rate"] is None
@@ -511,7 +523,7 @@ class TestComputeMonthlyMetrics:
                 "firstCall": "2026-04-03T10:10:00Z",   # 600s
             },
         ]
-        out = _compute_monthly_metrics(people, cfg, "April 2026", "2026-04-01", "2026-04-30")
+        out = _compute_monthly_metrics(people, [], cfg, "April 2026", "2026-04-01", "2026-04-30")
 
         assert out["speed_to_action"] == pytest.approx(300.0)
 
@@ -520,7 +532,7 @@ class TestComputeMonthlyMetrics:
 
         cfg = {"fub_agent_id": "100", "name": "Alice", "email": "alice@x.com"}
         people = [{"sourceId": 14, "stageId": 26, "created": "2026-04-01T10:00:00Z"}]
-        out = _compute_monthly_metrics(people, cfg, "April 2026", "2026-04-01", "2026-04-30")
+        out = _compute_monthly_metrics(people, [], cfg, "April 2026", "2026-04-01", "2026-04-30")
 
         assert out["appt_met_rate"] is None
 
@@ -529,7 +541,7 @@ class TestComputeMonthlyMetrics:
 
         cfg = {"fub_agent_id": "100", "name": "Alice", "email": "alice@x.com"}
         people = [{"sourceId": 14, "stageId": 28, "created": "2026-04-01T10:00:00Z"}]
-        out = _compute_monthly_metrics(people, cfg, "April 2026", "2026-04-01", "2026-04-30")
+        out = _compute_monthly_metrics(people, [], cfg, "April 2026", "2026-04-01", "2026-04-30")
 
         assert out["csat"] is None
 

@@ -1,10 +1,20 @@
 """
-Follow Up Boss API client.
+Follow Up Boss API client — monthly Zillow Preferred metrics.
 
-Computes monthly Zillow Preferred metrics from the /v1/people endpoint.
-FUB does not expose a working aggregate reporting endpoint for Zillow Preferred
-KPIs, so we derive them the same way fub_daily_metrics does — by fetching every
-per-lead record for the period and computing the statistics ourselves.
+Data sources (per FUB Open API guidance):
+
+  speed_to_action  → /people: compare lead.created to first manual contact
+                     (firstCall / lastSentText / lastSentEmail on person record)
+  work_with_rate   → /people: fraction of leads that moved past the New stage
+                     (best available proxy; FUB has no "signed working agreement" field)
+  appt_set_rate    → /appointments: appointments created for agent in the period
+                     divided by total Zillow leads in the period
+  appt_met_rate    → /appointments: outcomes of "Completed"/"Met"/"Showed"
+                     divided by total appointments set
+  csat             → Not available via FUB API. Zillow's CSAT/NPS data lives in
+                     their proprietary "Best of Zillow" report and is not exposed
+                     through a standard FUB endpoint. Stored as None until a
+                     Zillow API integration is added.
 
 FUB API docs: https://docs.followupboss.com/reference
 """
@@ -144,13 +154,79 @@ def _fetch_people_for_agent(agent_id: str, start_date: str, end_date: str) -> li
     return collected
 
 
-# ── Monthly metric computation ────────────────────────────────────────────────
+# ── Appointments fetch ────────────────────────────────────────────────────────
+
+# FUB appointment outcome values that indicate the lead actually showed up.
+# The exact strings are tenant/FUB-version specific — add aliases as needed.
+_APPT_MET_OUTCOMES = {"completed", "met", "showed", "show", "shown"}
+
+
+def _fetch_appointments_for_agent(agent_id: str, start_date: str, end_date: str) -> list[dict]:
+    """
+    Fetch appointments created by/for this agent within [start_date, end_date].
+
+    FUB Appointments fields used:
+      userId    — FUB user id of the agent who owns the appointment
+      outcome   — appointment result ("Completed", "Met", "No Show", etc.)
+      created   — ISO timestamp when the appointment was booked in FUB
+
+    Returns an empty list (soft-fail) if the endpoint returns a non-2xx that
+    suggests the resource is unavailable, so missing appointment data doesn't
+    abort the rest of the per-agent computation.
+    """
+    import requests as _req
+
+    collected: list[dict] = []
+    offset = 0
+    limit = 100
+
+    while True:
+        params = {
+            "userId": agent_id,
+            "createdAfter": start_date,
+            "createdBefore": end_date,
+            "limit": limit,
+            "offset": offset,
+        }
+        try:
+            data = _get("/appointments", params=params)
+        except _req.HTTPError as exc:
+            status = exc.response.status_code if exc.response is not None else None
+            if status in (404, 403):
+                log.warning("/appointments returned %s — appt metrics will be None", status)
+                return []
+            raise
+        except Exception as exc:
+            log.warning("/appointments fetch failed (%s) — appt metrics will be None", exc)
+            return []
+        appts = data.get("appointments") or []
+        collected.extend(appts)
+
+        meta = data.get("_metadata") or {}
+        total = meta.get("total")
+        if not appts or len(appts) < limit:
+            break
+        offset += limit
+        if total is not None and offset >= total:
+            break
+        if offset >= 5000:
+            log.warning("Stopping at offset 5000 for agent %s appointments", agent_id)
+            break
+
+    return collected
+
+
+def _is_appt_met(appt: dict) -> bool:
+    """True if the appointment outcome indicates the lead showed up."""
+    outcome = (appt.get("outcome") or appt.get("outcomeType") or "").strip().lower()
+    return outcome in _APPT_MET_OUTCOMES
+
+
+# ── Stage-id constants (used only for work_with_rate proxy) ──────────────────
 
 # Empirically observed FUB stage ids for The Anchor Group:
-#   26 = New, 27 = Attempted Contact, 28 = Contacted, 29 = Appointment Set, 30 = Met
+#   26 = New, 27 = Attempted Contact, 28 = Contacted, 29 = Appt Set, 30 = Met
 _STAGE_NEW = 26
-_APPT_STAGE_IDS = (29, 30)
-_STAGE_MET = 30
 
 
 def fetch_users() -> list[dict]:
@@ -245,12 +321,19 @@ def fetch_all_agents(period: str | None = None) -> list[dict]:
     for agent_cfg in roster:
         agent_id = agent_cfg["fub_agent_id"]
         name = agent_cfg["name"]
-        log.info("Fetching people for %s (ID: %s)…", name, agent_id)
+        log.info("Fetching metrics for %s (ID: %s)…", name, agent_id)
 
         try:
             people = _fetch_people_for_agent(agent_id, start_date, end_date)
             log.info("  %s: %d Zillow leads found", name, len(people))
-            results.append(_compute_monthly_metrics(people, agent_cfg, period_label, start_date, end_date))
+            # Appointments endpoint is best-effort; soft-fail is handled inside.
+            appointments = _fetch_appointments_for_agent(agent_id, start_date, end_date)
+            log.info("  %s: %d appointments found", name, len(appointments))
+            results.append(
+                _compute_monthly_metrics(
+                    people, appointments, agent_cfg, period_label, start_date, end_date
+                )
+            )
         except Exception as exc:
             log.error("Failed to fetch metrics for %s: %s", name, exc)
             results.append(_null_record(agent_cfg, period_label, start_date, end_date))
@@ -288,37 +371,50 @@ def _first_contact_seconds(person: dict) -> float | None:
 
 
 def _compute_monthly_metrics(
-    people: list[dict], agent_cfg: dict, period: str, start: str, end: str
+    people: list[dict],
+    appointments: list[dict],
+    agent_cfg: dict,
+    period: str,
+    start: str,
+    end: str,
 ) -> dict:
-    """Compute monthly ZP metrics from a list of Zillow Preferred lead records."""
+    """
+    Compute monthly ZP metrics.
+
+    people       → /people (Zillow Preferred leads for the period)
+    appointments → /appointments (appointments set for the period); may be []
+                   if the endpoint was unavailable.
+    """
     total = len(people)
 
     if total == 0:
         return _null_record(agent_cfg, period, start, end)
 
+    # speed_to_action + work_with_rate from People data
     response_times: list[float] = []
-    accepted_count = 0    # moved past New (proxy for work_with_rate)
-    appt_set_count = 0    # stageId in (29, 30)
-    appt_met_count = 0    # stageId == 30
+    accepted_count = 0
 
     for p in people:
         rt = _first_contact_seconds(p)
         if rt is not None:
             response_times.append(rt)
-
         stage_id = p.get("stageId")
-        if isinstance(stage_id, int):
-            if stage_id > _STAGE_NEW:
-                accepted_count += 1
-            if stage_id in _APPT_STAGE_IDS:
-                appt_set_count += 1
-            if stage_id == _STAGE_MET:
-                appt_met_count += 1
+        if isinstance(stage_id, int) and stage_id > _STAGE_NEW:
+            accepted_count += 1
 
     speed_to_action = median(response_times) if response_times else None
     work_with_rate = accepted_count / total
-    appt_set_rate = appt_set_count / total
-    appt_met_rate = appt_met_count / appt_set_count if appt_set_count > 0 else None
+
+    # appt_set_rate + appt_met_rate from Appointments data (preferred)
+    # Falls back to None if appointments list is empty (endpoint unavailable).
+    if appointments:
+        appt_set_count = len(appointments)
+        appt_met_count = sum(1 for a in appointments if _is_appt_met(a))
+        appt_set_rate = appt_set_count / total
+        appt_met_rate = appt_met_count / appt_set_count if appt_set_count > 0 else None
+    else:
+        appt_set_rate = None
+        appt_met_rate = None
 
     return {
         "agent_id": agent_cfg["fub_agent_id"],
@@ -329,7 +425,7 @@ def _compute_monthly_metrics(
         "end_date": end,
         "speed_to_action": speed_to_action,
         "work_with_rate": work_with_rate,
-        "csat": None,  # not available from FUB people data
+        "csat": None,  # Zillow proprietary — not available via FUB API
         "appt_set_rate": appt_set_rate,
         "appt_met_rate": appt_met_rate,
     }
@@ -375,7 +471,7 @@ def mock_agents(period: str | None = None) -> list[dict]:
             "csat": 0.91,               # green
             "appt_set_rate": 0.65,      # green
             "appt_met_rate": 0.78,      # green
-            "_raw": {},
+
         },
         {
             "agent_id": "mock-002",
@@ -389,7 +485,7 @@ def mock_agents(period: str | None = None) -> list[dict]:
             "csat": 0.78,               # yellow
             "appt_set_rate": 0.52,      # yellow
             "appt_met_rate": 0.58,      # yellow
-            "_raw": {},
+
         },
         {
             "agent_id": "mock-003",
@@ -403,6 +499,6 @@ def mock_agents(period: str | None = None) -> list[dict]:
             "csat": 0.72,               # red
             "appt_set_rate": 0.38,      # red
             "appt_met_rate": 0.45,      # red
-            "_raw": {},
+
         },
     ]
