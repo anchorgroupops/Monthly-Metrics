@@ -13,6 +13,7 @@ config/thresholds.json.bak
 
 # Environment & secrets
 .env
+.env.save
 config/secrets.py
 
 # Local roster file used by the agent portal (sensitive; populate at runtime).
