@@ -1,8 +1,10 @@
 """
 Follow Up Boss API client.
 
-Fetches Zillow Preferred Performance Report metrics for each agent in the
-configured roster. Returns normalized dicts ready for metrics.py to score.
+Computes monthly Zillow Preferred metrics from the /v1/people endpoint.
+FUB does not expose a working aggregate reporting endpoint for Zillow Preferred
+KPIs, so we derive them the same way fub_daily_metrics does — by fetching every
+per-lead record for the period and computing the statistics ourselves.
 
 FUB API docs: https://docs.followupboss.com/reference
 """
@@ -11,6 +13,7 @@ import base64
 import logging
 import time
 from datetime import date, timedelta
+from statistics import median
 
 import requests
 
@@ -100,37 +103,54 @@ def _get(path: str, params: dict | None = None) -> dict:
     raise RuntimeError(f"FUB API unreachable after {FUB_MAX_RETRIES} attempts: {url}")
 
 
-# ── Core fetch functions ──────────────────────────────────────────────────────
+# ── Per-lead people fetch ─────────────────────────────────────────────────────
 
 
-def fetch_zillow_preferred_report(agent_id: str, start_date: str, end_date: str) -> dict:
+def _fetch_people_for_agent(agent_id: str, start_date: str, end_date: str) -> list[dict]:
     """
-    Fetch the Zillow Preferred Performance Report for a single agent.
-
-    FUB exposes agent performance stats under /reporting or via custom
-    report endpoints. The exact path may need adjustment based on your FUB
-    account's Zillow Preferred integration settings.
-
-    Returns a raw dict from the FUB API response.
+    Page through /v1/people for one agent, returning every Zillow Preferred lead
+    created within [start_date, end_date] (ISO YYYY-MM-DD).
     """
-    # Primary endpoint: agent performance report scoped to Zillow leads
-    params = {
-        "agentId": agent_id,
-        "startDate": start_date,
-        "endDate": end_date,
-        "source": "Zillow",  # Filter to Zillow-source leads only
-    }
+    from src.fub_daily_metrics import is_zillow_preferred
 
-    # Try the dedicated Zillow Preferred report endpoint first
-    try:
-        data = _get("/reporting/zillow-preferred", params=params)
-        return data
-    except requests.HTTPError as e:
-        if e.response.status_code == 404:
-            log.info("Dedicated ZP endpoint not found; falling back to /reporting/agent")
-            # Fallback: general agent performance report
-            return _get("/reporting/agent", params=params)
-        raise
+    collected: list[dict] = []
+    offset = 0
+    limit = 100
+
+    while True:
+        params = {
+            "assignedUserId": agent_id,
+            "createdAfter": start_date,
+            "createdBefore": end_date,
+            "limit": limit,
+            "offset": offset,
+            "fields": "allFields",
+        }
+        data = _get("/people", params=params)
+        people = data.get("people") or []
+        collected.extend(p for p in people if is_zillow_preferred(p))
+
+        meta = data.get("_metadata") or {}
+        total = meta.get("total")
+        if not people or len(people) < limit:
+            break
+        offset += limit
+        if total is not None and offset >= total:
+            break
+        if offset >= 5000:
+            log.warning("Stopping at offset 5000 for agent %s — check pagination", agent_id)
+            break
+
+    return collected
+
+
+# ── Monthly metric computation ────────────────────────────────────────────────
+
+# Empirically observed FUB stage ids for The Anchor Group:
+#   26 = New, 27 = Attempted Contact, 28 = Contacted, 29 = Appointment Set, 30 = Met
+_STAGE_NEW = 26
+_APPT_STAGE_IDS = (29, 30)
+_STAGE_MET = 30
 
 
 def fetch_users() -> list[dict]:
@@ -187,7 +207,7 @@ def fetch_users() -> list[dict]:
 
 def fetch_all_agents(period: str | None = None) -> list[dict]:
     """
-    Fetch and normalize Zillow Preferred metrics for every agent in AGENTS.
+    Compute monthly Zillow Preferred metrics for every agent from /v1/people.
 
     Returns a list of dicts:
     {
@@ -197,12 +217,11 @@ def fetch_all_agents(period: str | None = None) -> list[dict]:
         "period":          str,    # e.g. "April 2026"
         "start_date":      str,
         "end_date":        str,
-        "speed_to_action": float | None,  # seconds (lower is better; target 300s)
-        "work_with_rate":  float | None,  # 0.0–1.0
-        "csat":            float | None,  # 0.0–1.0
-        "appt_set_rate":   float | None,  # 0.0–1.0
-        "appt_met_rate":   float | None,  # 0.0–1.0
-        "_raw":            dict,          # untouched API response for debugging
+        "speed_to_action": float | None,  # median seconds to first contact (lower_is_better)
+        "work_with_rate":  float | None,  # fraction of leads moved past New stage (0.0–1.0)
+        "csat":            float | None,  # always None — not available from FUB people data
+        "appt_set_rate":   float | None,  # fraction with appointment set/met (0.0–1.0)
+        "appt_met_rate":   float | None,  # fraction of set appts that were met (0.0–1.0)
     }
     """
     if not FUB_API_KEY:
@@ -226,74 +245,80 @@ def fetch_all_agents(period: str | None = None) -> list[dict]:
     for agent_cfg in roster:
         agent_id = agent_cfg["fub_agent_id"]
         name = agent_cfg["name"]
-        log.info("Fetching metrics for %s (ID: %s)…", name, agent_id)
+        log.info("Fetching people for %s (ID: %s)…", name, agent_id)
 
         try:
-            raw = fetch_zillow_preferred_report(agent_id, start_date, end_date)
-            normalized = _normalize(raw, agent_cfg, period_label, start_date, end_date)
-            results.append(normalized)
+            people = _fetch_people_for_agent(agent_id, start_date, end_date)
+            log.info("  %s: %d Zillow leads found", name, len(people))
+            results.append(_compute_monthly_metrics(people, agent_cfg, period_label, start_date, end_date))
         except Exception as exc:
             log.error("Failed to fetch metrics for %s: %s", name, exc)
-            # Include the agent with nulls so the report still generates
             results.append(_null_record(agent_cfg, period_label, start_date, end_date))
 
     return results
 
 
-def _normalize(raw: dict, agent_cfg: dict, period: str, start: str, end: str) -> dict:
-    """
-    Map raw FUB API response fields to our standardized schema.
+def _first_contact_seconds(person: dict) -> float | None:
+    """Seconds from lead created to earliest of (firstCall, lastSentText, lastSentEmail)."""
+    from datetime import UTC, datetime
 
-    FUB field names in the ZP report may vary — update the fallback keys below
-    once you confirm the actual response shape from your account.
-    """
-    # speed_to_action: median seconds from inbound lead to first contact
-    sta_raw = (
-        raw.get("speedToAction")
-        or raw.get("responseTime")
-        or raw.get("medianResponseTimeSeconds")
-        or raw.get("speedToLead")
-        or raw.get("firstResponseTimeSeconds")
-    )
+    def _parse(val: str | None) -> datetime | None:
+        if not val:
+            return None
+        for fmt in ("%Y-%m-%dT%H:%M:%SZ", "%Y-%m-%dT%H:%M:%S+00:00", "%Y-%m-%dT%H:%M:%S"):
+            try:
+                dt = datetime.strptime(val, fmt)
+                return dt.replace(tzinfo=UTC)
+            except ValueError:
+                continue
+        return None
 
-    # work_with_rate: fraction of qualified leads signed to a working relationship
-    wwr_raw = (
-        raw.get("workWithRate")
-        or raw.get("workingRelationshipRate")
-        or raw.get("workWithPercentage")
-    )
+    created = _parse(person.get("created"))
+    if created is None:
+        return None
 
-    # csat: customer satisfaction as a 0–1 fraction (Zillow reports 0–100; divide if needed)
-    csat_raw = (
-        raw.get("csatScore")
-        or raw.get("csat")
-        or raw.get("satisfactionScore")
-        or raw.get("customerSatisfactionScore")
-    )
+    candidates = [
+        _parse(person.get(k))
+        for k in ("firstCall", "lastSentText", "lastSentEmail")
+    ]
+    valid = [c for c in candidates if c is not None and c >= created]
+    if not valid:
+        return None
+    return max(0.0, (min(valid) - created).total_seconds())
 
-    # appt_set_rate: fraction of qualified leads where an appointment was booked
-    asr_raw = (
-        raw.get("appointmentSetRate")
-        or raw.get("apptSetRate")
-        or raw.get("appointmentRate")
-        or raw.get("meetingSetRate")
-    )
 
-    # appt_met_rate: fraction of booked appointments the lead actually attended
-    amr_raw = (
-        raw.get("appointmentMetRate")
-        or raw.get("apptMetRate")
-        or raw.get("showRate")
-        or raw.get("appointmentShowRate")
-        or raw.get("meetingMetRate")
-    )
+def _compute_monthly_metrics(
+    people: list[dict], agent_cfg: dict, period: str, start: str, end: str
+) -> dict:
+    """Compute monthly ZP metrics from a list of Zillow Preferred lead records."""
+    total = len(people)
 
-    # Zillow sometimes returns CSAT as 0–100; normalise to 0–1
-    csat_val: float | None = None
-    if csat_raw is not None:
-        csat_val = float(csat_raw)
-        if csat_val > 1.0:
-            csat_val = csat_val / 100.0
+    if total == 0:
+        return _null_record(agent_cfg, period, start, end)
+
+    response_times: list[float] = []
+    accepted_count = 0    # moved past New (proxy for work_with_rate)
+    appt_set_count = 0    # stageId in (29, 30)
+    appt_met_count = 0    # stageId == 30
+
+    for p in people:
+        rt = _first_contact_seconds(p)
+        if rt is not None:
+            response_times.append(rt)
+
+        stage_id = p.get("stageId")
+        if isinstance(stage_id, int):
+            if stage_id > _STAGE_NEW:
+                accepted_count += 1
+            if stage_id in _APPT_STAGE_IDS:
+                appt_set_count += 1
+            if stage_id == _STAGE_MET:
+                appt_met_count += 1
+
+    speed_to_action = median(response_times) if response_times else None
+    work_with_rate = accepted_count / total
+    appt_set_rate = appt_set_count / total
+    appt_met_rate = appt_met_count / appt_set_count if appt_set_count > 0 else None
 
     return {
         "agent_id": agent_cfg["fub_agent_id"],
@@ -302,17 +327,16 @@ def _normalize(raw: dict, agent_cfg: dict, period: str, start: str, end: str) ->
         "period": period,
         "start_date": start,
         "end_date": end,
-        "speed_to_action": float(sta_raw) if sta_raw is not None else None,
-        "work_with_rate": float(wwr_raw) if wwr_raw is not None else None,
-        "csat": csat_val,
-        "appt_set_rate": float(asr_raw) if asr_raw is not None else None,
-        "appt_met_rate": float(amr_raw) if amr_raw is not None else None,
-        "_raw": raw,
+        "speed_to_action": speed_to_action,
+        "work_with_rate": work_with_rate,
+        "csat": None,  # not available from FUB people data
+        "appt_set_rate": appt_set_rate,
+        "appt_met_rate": appt_met_rate,
     }
 
 
 def _null_record(agent_cfg: dict, period: str, start: str, end: str) -> dict:
-    """Return a placeholder record when the API call fails for an agent."""
+    """Return a placeholder record when the API call fails or yields no leads."""
     return {
         "agent_id": agent_cfg["fub_agent_id"],
         "name": agent_cfg["name"],
@@ -325,7 +349,6 @@ def _null_record(agent_cfg: dict, period: str, start: str, end: str) -> dict:
         "csat": None,
         "appt_set_rate": None,
         "appt_met_rate": None,
-        "_raw": {},
         "_error": True,
     }
 

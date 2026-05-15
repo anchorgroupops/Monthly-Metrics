@@ -110,7 +110,7 @@ def fake_fub_agents():
             "csat": 0.91,
             "appt_set_rate": 0.65,
             "appt_met_rate": 0.78,
-            "_raw": {},
+
         },
         {
             "agent_id": "200",
@@ -124,7 +124,7 @@ def fake_fub_agents():
             "csat": 0.78,
             "appt_set_rate": 0.52,
             "appt_met_rate": 0.58,
-            "_raw": {},
+
         },
     ]
 

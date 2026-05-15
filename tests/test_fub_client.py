@@ -221,46 +221,33 @@ class TestGetWithRetry:
             fub_client._get("/x")
 
 
-# ── fetch_zillow_preferred_report ─────────────────────────────────────────────
+# ── _fetch_people_for_agent ───────────────────────────────────────────────────
 
 
-class TestFetchZillowPreferredReport:
+class TestFetchPeopleForAgent:
     @responses.activate
-    def test_uses_zillow_preferred_endpoint_when_available(self, monkeypatch):
+    def test_returns_only_zillow_preferred_leads(self, monkeypatch):
         from src import fub_client
 
         monkeypatch.setattr(fub_client, "FUB_API_KEY", "test-key")
         monkeypatch.setattr(fub_client, "FUB_BASE_URL", "https://api.example.com")
 
         responses.get(
-            "https://api.example.com/reporting/zillow-preferred",
-            json={"pCVR": 0.05},
+            "https://api.example.com/people",
+            json={
+                "_metadata": {"total": 2},
+                "people": [
+                    {"id": 1, "sourceId": 14, "stageId": 28},       # Zillow by sourceId
+                    {"id": 2, "source": "Coldwell Banker", "stageId": 27},  # not Zillow
+                    {"id": 3, "source": "Zillow Preferred", "stageId": 29},  # Zillow by name
+                ],
+            },
             status=200,
         )
 
-        result = fub_client.fetch_zillow_preferred_report("100", "2026-04-01", "2026-04-30")
-        assert result == {"pCVR": 0.05}
-
-    @responses.activate
-    def test_falls_back_to_agent_endpoint_on_404(self, monkeypatch):
-        from src import fub_client
-
-        monkeypatch.setattr(fub_client, "FUB_API_KEY", "test-key")
-        monkeypatch.setattr(fub_client, "FUB_BASE_URL", "https://api.example.com")
-
-        responses.get(
-            "https://api.example.com/reporting/zillow-preferred",
-            json={"error": "not found"},
-            status=404,
-        )
-        responses.get(
-            "https://api.example.com/reporting/agent",
-            json={"pickupRate": 0.8},
-            status=200,
-        )
-
-        result = fub_client.fetch_zillow_preferred_report("100", "2026-04-01", "2026-04-30")
-        assert result == {"pickupRate": 0.8}
+        result = fub_client._fetch_people_for_agent("100", "2026-04-01", "2026-04-30")
+        assert len(result) == 2
+        assert {p["id"] for p in result} == {1, 3}
 
 
 # ── fetch_users (auto-discovery) ──────────────────────────────────────────────
@@ -393,7 +380,7 @@ class TestFetchAllAgents:
         assert result == []
 
     @responses.activate
-    def test_normalizes_each_agent(self, monkeypatch):
+    def test_computes_metrics_from_people_data(self, monkeypatch):
         from src import fub_client
 
         monkeypatch.setattr(fub_client, "FUB_API_KEY", "test-key")
@@ -402,18 +389,43 @@ class TestFetchAllAgents:
         monkeypatch.setattr(
             fub_client,
             "AGENTS",
-            [
-                {"name": "Alice", "email": "alice@x.com", "fub_agent_id": "100"},
-            ],
+            [{"name": "Alice", "email": "alice@x.com", "fub_agent_id": "100"}],
         )
 
+        # 4 Zillow leads: 2 accepted, 2 with appts set, 1 met
         responses.get(
-            "https://api.example.com/reporting/zillow-preferred",
+            "https://api.example.com/people",
             json={
-                "predictedConversionRate": 0.045,
-                "pickupRate": 0.88,
-                "csatScore": 4.6,
-                "zhlTransfers": 3,
+                "_metadata": {"total": 4},
+                "people": [
+                    {
+                        "id": 1,
+                        "sourceId": 14,
+                        "stageId": 28,  # Contacted — accepted
+                        "created": "2026-04-01T10:00:00Z",
+                        "firstCall": "2026-04-01T10:04:00Z",  # 240s
+                    },
+                    {
+                        "id": 2,
+                        "sourceId": 14,
+                        "stageId": 29,  # Appt Set — accepted + appt
+                        "created": "2026-04-02T10:00:00Z",
+                        "firstCall": "2026-04-02T10:05:00Z",  # 300s
+                    },
+                    {
+                        "id": 3,
+                        "sourceId": 14,
+                        "stageId": 30,  # Met — accepted + appt + met
+                        "created": "2026-04-03T10:00:00Z",
+                        "firstCall": "2026-04-03T10:06:00Z",  # 360s
+                    },
+                    {
+                        "id": 4,
+                        "sourceId": 14,
+                        "stageId": 26,  # New — not accepted
+                        "created": "2026-04-04T10:00:00Z",
+                    },
+                ],
             },
             status=200,
         )
@@ -423,16 +435,21 @@ class TestFetchAllAgents:
         assert len(result) == 1
         agent = result[0]
         assert agent["agent_id"] == "100"
-        assert agent["name"] == "Alice"
-        assert agent["pCVR"] == 0.045
-        assert agent["pickup_rate"] == 0.88
-        assert agent["csat"] == 4.6
-        assert agent["zhl_transfers"] == 3
         assert agent["period"] == "April 2026"
+        # 3 of 4 accepted (stageId > 26)
+        assert agent["work_with_rate"] == pytest.approx(0.75)
+        # 2 of 4 had appts set (stageId in 29,30)
+        assert agent["appt_set_rate"] == pytest.approx(0.5)
+        # 1 of 2 appt leads met (stageId == 30)
+        assert agent["appt_met_rate"] == pytest.approx(0.5)
+        # median of 240, 300, 360 = 300s
+        assert agent["speed_to_action"] == pytest.approx(300.0)
+        # csat not available from people data
+        assert agent["csat"] is None
 
     @responses.activate
     def test_returns_null_record_on_agent_failure(self, monkeypatch, mocker):
-        """If one agent's fetch raises, the loop continues with a null record."""
+        """If the people fetch raises, the loop continues with a null record."""
         from src import fub_client
 
         monkeypatch.setattr(fub_client, "FUB_API_KEY", "test-key")
@@ -442,79 +459,79 @@ class TestFetchAllAgents:
         monkeypatch.setattr(
             fub_client,
             "AGENTS",
-            [
-                {"name": "Bob", "email": "bob@x.com", "fub_agent_id": "200"},
-            ],
+            [{"name": "Bob", "email": "bob@x.com", "fub_agent_id": "200"}],
         )
         mocker.patch.object(fub_client.time, "sleep")
 
-        # Both endpoints 500 — should raise after retries → caught → null record
-        responses.get(
-            "https://api.example.com/reporting/zillow-preferred",
-            status=500,
-        )
+        responses.get("https://api.example.com/people", status=500)
 
         result = fub_client.fetch_all_agents()
 
         assert len(result) == 1
         assert result[0]["agent_id"] == "200"
-        assert result[0]["pCVR"] is None
+        assert result[0]["speed_to_action"] is None
         assert result[0]["_error"] is True
 
 
-# ── _normalize ────────────────────────────────────────────────────────────────
+# ── _compute_monthly_metrics ──────────────────────────────────────────────────
 
 
-class TestNormalize:
-    def test_maps_canonical_field_names(self):
-        from src.fub_client import _normalize
+class TestComputeMonthlyMetrics:
+    def test_returns_null_record_when_no_leads(self):
+        from src.fub_client import _compute_monthly_metrics
 
-        raw = {
-            "predictedConversionRate": 0.05,
-            "pickupRate": 0.9,
-            "csatScore": 4.5,
-            "zhlTransfers": 7,
-        }
         cfg = {"fub_agent_id": "100", "name": "Alice", "email": "alice@x.com"}
+        out = _compute_monthly_metrics([], cfg, "April 2026", "2026-04-01", "2026-04-30")
 
-        out = _normalize(raw, cfg, "April 2026", "2026-04-01", "2026-04-30")
+        assert out["speed_to_action"] is None
+        assert out["work_with_rate"] is None
+        assert out["_error"] is True
 
-        assert out["pCVR"] == 0.05
-        assert out["pickup_rate"] == 0.9
-        assert out["csat"] == 4.5
-        assert out["zhl_transfers"] == 7
-        assert out["_raw"] == raw
+    def test_speed_to_action_is_median(self):
+        from src.fub_client import _compute_monthly_metrics
 
-    def test_falls_through_alternate_names(self):
-        from src.fub_client import _normalize
-
-        raw = {
-            "pCVR": 0.04,
-            "callPickupRate": 0.85,
-            "csat": 4.3,
-            "zillowHomeLoanTransfers": 2,
-        }
         cfg = {"fub_agent_id": "100", "name": "Alice", "email": "alice@x.com"}
+        people = [
+            {
+                "sourceId": 14,
+                "stageId": 28,
+                "created": "2026-04-01T10:00:00Z",
+                "firstCall": "2026-04-01T10:01:00Z",   # 60s
+            },
+            {
+                "sourceId": 14,
+                "stageId": 28,
+                "created": "2026-04-02T10:00:00Z",
+                "firstCall": "2026-04-02T10:05:00Z",   # 300s
+            },
+            {
+                "sourceId": 14,
+                "stageId": 28,
+                "created": "2026-04-03T10:00:00Z",
+                "firstCall": "2026-04-03T10:10:00Z",   # 600s
+            },
+        ]
+        out = _compute_monthly_metrics(people, cfg, "April 2026", "2026-04-01", "2026-04-30")
 
-        out = _normalize(raw, cfg, "April 2026", "2026-04-01", "2026-04-30")
+        assert out["speed_to_action"] == pytest.approx(300.0)
 
-        assert out["pCVR"] == 0.04
-        assert out["pickup_rate"] == 0.85
-        assert out["csat"] == 4.3
-        assert out["zhl_transfers"] == 2
+    def test_appt_met_rate_none_when_no_appts_set(self):
+        from src.fub_client import _compute_monthly_metrics
 
-    def test_preserves_none_for_missing_metrics(self):
-        from src.fub_client import _normalize
-
-        raw = {}
         cfg = {"fub_agent_id": "100", "name": "Alice", "email": "alice@x.com"}
+        people = [{"sourceId": 14, "stageId": 26, "created": "2026-04-01T10:00:00Z"}]
+        out = _compute_monthly_metrics(people, cfg, "April 2026", "2026-04-01", "2026-04-30")
 
-        out = _normalize(raw, cfg, "April 2026", "2026-04-01", "2026-04-30")
+        assert out["appt_met_rate"] is None
 
-        assert out["pCVR"] is None
-        assert out["pickup_rate"] is None
+    def test_csat_always_none(self):
+        from src.fub_client import _compute_monthly_metrics
+
+        cfg = {"fub_agent_id": "100", "name": "Alice", "email": "alice@x.com"}
+        people = [{"sourceId": 14, "stageId": 28, "created": "2026-04-01T10:00:00Z"}]
+        out = _compute_monthly_metrics(people, cfg, "April 2026", "2026-04-01", "2026-04-30")
+
         assert out["csat"] is None
-        assert out["zhl_transfers"] is None
 
 
 # ── _null_record ──────────────────────────────────────────────────────────────
@@ -528,9 +545,12 @@ class TestNullRecord:
         out = _null_record(cfg, "April 2026", "2026-04-01", "2026-04-30")
 
         assert out["agent_id"] == "100"
-        assert out["pCVR"] is None
+        assert out["speed_to_action"] is None
+        assert out["work_with_rate"] is None
+        assert out["appt_set_rate"] is None
+        assert out["appt_met_rate"] is None
+        assert out["csat"] is None
         assert out["_error"] is True
-        assert out["_raw"] == {}
 
 
 # ── mock_agents ───────────────────────────────────────────────────────────────
@@ -543,9 +563,10 @@ class TestMockAgents:
         agents = mock_agents()
 
         assert len(agents) == 3
-        assert all(a["period"] == "March 2026" for a in agents)
+        assert all(a["period"] == "April 2026" for a in agents)
         assert all("agent_id" in a and a["agent_id"].startswith("mock-") for a in agents)
         assert all("email" in a and "@" in a["email"] for a in agents)
+        assert all("speed_to_action" in a for a in agents)
 
     def test_period_override(self):
         from src.fub_client import mock_agents
