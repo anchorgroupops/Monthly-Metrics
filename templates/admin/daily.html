@@ -1,60 +1,35 @@
-{% extends "admin/base.html" %}
-{% block title %}Daily Metrics — Anchor Group{% endblock %}
+{% extends "admin/_base.html" %}
+{% block title %}Daily Activity · Anchor Metrics{% endblock %}
 {% block content %}
-<div class="max-w-4xl mx-auto px-4 py-6">
-  <div class="flex items-center justify-between mb-6">
-    <div>
-      <h1 class="text-2xl font-bold" style="color: {{ brand.color_primary }}">Daily Zillow Metrics</h1>
-      <p class="text-sm text-gray-500 mt-1">Last 30 days · Updated {{ updated_at or 'just now' }}</p>
-    </div>
-    <form method="POST" action="{{ url_for('daily_refresh') }}">
+
+<section class="mb-6 flex flex-wrap items-center justify-between gap-3">
+  <div>
+    <h1 class="text-2xl font-bold brand-primary-text">Daily Activity</h1>
+    <p class="text-sm text-slate-500">
+      Live FUB pulse · month-to-date Zillow Preferred leads · auto-refreshes every {{ poll_interval_seconds // 60 }} min
+    </p>
+  </div>
+  <div class="flex flex-wrap gap-2">
+    <form method="POST" action="{{ url_for('daily_refresh') }}" class="inline">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
       <button type="submit"
-        class="px-4 py-2 rounded-lg text-sm font-medium text-white"
-        style="background: {{ brand.color_primary }}"
-        hx-post="{{ url_for('daily_refresh') }}" hx-swap="none">
-        Refresh Data
+              class="brand-primary text-white font-medium px-4 py-2 rounded-lg text-sm hover:opacity-90">
+        Refresh now
       </button>
     </form>
+    <a href="{{ url_for('home') }}"
+       class="bg-white border border-slate-300 px-4 py-2 rounded-lg text-sm hover:bg-slate-50">
+      Monthly view
+    </a>
   </div>
+</section>
 
-  {% if error %}
-  <div class="bg-red-50 border border-red-200 rounded-lg p-4 mb-6">
-    <p class="text-red-700 text-sm">{{ error }}</p>
-  </div>
-  {% endif %}
-
-  <!-- Team Average -->
-  {% if team_avg %}
-  <div class="bg-white rounded-xl shadow-sm border p-5 mb-6">
-    <h2 class="text-lg font-bold mb-4" style="color: {{ brand.color_primary }}">Team Average</h2>
-    {% set m = team_avg %}
-    {% include "admin/_metric_bars.html" %}
-    <p class="text-xs text-gray-400 mt-3">{{ m.total_zillow_leads }} Zillow leads across {{ agents|length }} agents</p>
-  </div>
-  {% endif %}
-
-  <!-- Per-Agent Cards -->
-  <div class="space-y-4">
-    {% for agent in agents %}
-    {% set m = agent.metrics %}
-    <div class="bg-white rounded-xl shadow-sm border p-5">
-      <div class="flex items-center justify-between mb-3">
-        <h3 class="font-semibold text-gray-800">{{ agent.agent_name }}</h3>
-        <span class="text-xs px-2 py-1 rounded-full
-          {% if m.total_zillow_leads > 0 %}bg-green-100 text-green-700{% else %}bg-gray-100 text-gray-500{% endif %}">
-          {{ m.total_zillow_leads }} Zillow lead{{ 's' if m.total_zillow_leads != 1 }}
-        </span>
-      </div>
-      {% if m.total_zillow_leads > 0 %}
-        {% include "admin/_metric_bars.html" %}
-      {% else %}
-        <p class="text-sm text-gray-400 italic">No Zillow leads in the last 30 days</p>
-      {% endif %}
-    </div>
-    {% endfor %}
-  </div>
+{# Self-loading table that polls itself. First render hits /daily/data
+   immediately, and that partial keeps polling on its own trigger. #}
+<div hx-get="{{ url_for('daily_data') }}"
+     hx-trigger="load, every {{ poll_interval_seconds }}s"
+     hx-swap="innerHTML">
+  <div class="px-4 py-12 text-center text-slate-400 text-sm">Loading daily snapshot…</div>
 </div>
 
-<div hx-get="{{ url_for('daily_data') }}" hx-trigger="every 300s" hx-swap="none"></div>
 {% endblock %}

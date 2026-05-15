@@ -1,0 +1,187 @@
+{# HTMX-swapped partial. Re-renders inside #daily-data on each poll. #}
+
+{% macro fmt_value(value, unit) -%}
+  {%- if value is none -%}—
+  {%- elif unit == 'percent' -%}{{ '%.0f'|format(value * 100) }}%
+  {%- elif unit == 'seconds' -%}
+    {%- if value < 60 -%}{{ value|round|int }}s
+    {%- else -%}{{ (value // 60)|int }}m {{ (value % 60)|round|int }}s
+    {%- endif -%}
+  {%- else -%}{{ '%.2f'|format(value) }}
+  {%- endif -%}
+{%- endmacro %}
+
+{% macro status_classes(status) -%}
+  {%- if status == 'green' -%}bg-emerald-500
+  {%- elif status == 'yellow' -%}bg-amber-500
+  {%- elif status == 'red' -%}bg-rose-500
+  {%- else -%}bg-slate-300
+  {%- endif -%}
+{%- endmacro %}
+
+{% macro status_text(status) -%}
+  {%- if status == 'green' -%}text-emerald-700
+  {%- elif status == 'yellow' -%}text-amber-700
+  {%- elif status == 'red' -%}text-rose-700
+  {%- else -%}text-slate-400
+  {%- endif -%}
+{%- endmacro %}
+
+{# ── Pull status banner ─────────────────────────────────────────────────── #}
+<div class="mb-4">
+  {% if active %}
+    <div class="flex items-center gap-3 px-4 py-3 rounded-lg bg-amber-50 border border-amber-200 text-sm">
+      <span class="inline-block w-2.5 h-2.5 rounded-full bg-amber-500 animate-pulse"></span>
+      <div>
+        <div class="font-medium text-amber-900">Daily pull in progress…</div>
+        <div class="text-xs text-amber-700">Run #{{ active.id }} · started {{ active.created_at }} UTC</div>
+      </div>
+    </div>
+  {% elif latest %}
+    <div class="flex items-center gap-3 px-4 py-2 rounded-lg
+                {% if latest.status == 'ok' %}bg-emerald-50 border border-emerald-200 text-emerald-900
+                {% else %}bg-rose-50 border border-rose-200 text-rose-900{% endif %}
+                text-xs">
+      <span class="inline-block w-2 h-2 rounded-full
+                   {% if latest.status == 'ok' %}bg-emerald-500{% else %}bg-rose-500{% endif %}"></span>
+      <span>
+        Last daily pull: <strong>{{ latest.status }}</strong> · {{ latest.created_at }} UTC
+        {% if latest.notes %} · {{ latest.notes }}{% endif %}
+      </span>
+    </div>
+  {% else %}
+    <div class="px-4 py-2 rounded-lg bg-slate-50 border border-slate-200 text-xs text-slate-600">
+      No daily pull recorded yet. Click <strong>Refresh now</strong> to capture the first snapshot.
+    </div>
+  {% endif %}
+</div>
+
+{# ── Empty state ────────────────────────────────────────────────────────── #}
+{% if not rows %}
+  <div class="bg-white rounded-xl shadow px-6 py-12 text-center">
+    <p class="text-slate-500 text-sm">
+      No daily snapshots in the database yet. Run <code class="px-1 py-0.5 rounded bg-slate-100">python main.py --mode daily</code>
+      or click <strong>Refresh now</strong> above.
+    </p>
+  </div>
+{% else %}
+
+{# ── Team summary card ─────────────────────────────────────────────────── #}
+<section class="mb-5 bg-white rounded-xl shadow p-4">
+  <div class="flex flex-wrap items-baseline justify-between gap-2 mb-3">
+    <h2 class="font-heading text-lg font-bold brand-primary-text">Team total — month to date</h2>
+    <p class="text-xs text-slate-500">{{ team.agents }} agent{{ '' if team.agents == 1 else 's' }}</p>
+  </div>
+
+  <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4">
+    <div class="rounded-lg bg-slate-50 px-3 py-2">
+      <div class="text-xs uppercase tracking-wider text-slate-500">Activity points</div>
+      <div class="font-mono text-xl font-bold">{{ '{:,}'.format(team.totals.activity_points) }}</div>
+    </div>
+    <div class="rounded-lg bg-slate-50 px-3 py-2">
+      <div class="text-xs uppercase tracking-wider text-slate-500">Appts set</div>
+      <div class="font-mono text-xl font-bold">{{ team.totals.appointments_set }}</div>
+    </div>
+    <div class="rounded-lg bg-slate-50 px-3 py-2">
+      <div class="text-xs uppercase tracking-wider text-slate-500">Total leads</div>
+      <div class="font-mono text-xl font-bold">{{ team.totals.total_zillow_leads }}</div>
+    </div>
+    <div class="rounded-lg bg-slate-50 px-3 py-2">
+      <div class="text-xs uppercase tracking-wider text-slate-500">Not acted on</div>
+      <div class="font-mono text-xl font-bold {% if team.totals.new_leads_not_acted_on > 0 %}text-rose-600{% endif %}">
+        {{ team.totals.new_leads_not_acted_on }}
+      </div>
+    </div>
+  </div>
+
+  <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+    {% for key, m in team.scored.items() %}
+    <div>
+      <div class="flex items-baseline justify-between text-xs text-slate-600 mb-1">
+        <span class="font-medium">{{ m.label }}</span>
+        <span class="font-mono {{ status_text(m.status) }}">{{ fmt_value(m.value, m.unit) }}</span>
+      </div>
+      <div class="w-full h-2 rounded-full bg-slate-100 overflow-hidden">
+        <div class="h-full {{ status_classes(m.status) }}" style="width: {{ m.pct }}%"></div>
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+</section>
+
+{# ── Per-agent leaderboard ──────────────────────────────────────────────── #}
+<section class="bg-white rounded-xl shadow overflow-hidden">
+  <div class="px-4 py-3 border-b border-slate-100 flex items-baseline justify-between">
+    <h2 class="font-heading text-lg font-bold brand-primary-text">Agent leaderboard</h2>
+    <p class="text-xs text-slate-500">Sorted by activity points</p>
+  </div>
+
+  <ul class="divide-y divide-slate-100">
+    {% for r in rows %}
+    <li class="px-4 py-4">
+      <div class="flex items-baseline justify-between gap-3 mb-3">
+        <div class="min-w-0">
+          <div class="font-medium truncate">{{ r.name }}</div>
+          <div class="text-xs text-slate-500 truncate">{{ r.email }}</div>
+        </div>
+        <div class="text-right shrink-0">
+          <div class="font-mono text-2xl font-bold brand-primary-text">{{ '{:,}'.format(r.activity_points) }}</div>
+          <div class="text-xs uppercase tracking-wider text-slate-400">points</div>
+        </div>
+      </div>
+
+      {# Scored progress bars #}
+      <div class="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-2 mb-3">
+        {% for key, m in r.scored.items() %}
+        <div>
+          <div class="flex items-baseline justify-between text-xs mb-1">
+            <span class="text-slate-600">{{ m.label }}</span>
+            <span class="font-mono {{ status_text(m.status) }}">{{ fmt_value(m.value, m.unit) }}</span>
+          </div>
+          <div class="w-full h-1.5 rounded-full bg-slate-100 overflow-hidden">
+            <div class="h-full {{ status_classes(m.status) }}" style="width: {{ m.pct }}%"></div>
+          </div>
+        </div>
+        {% endfor %}
+      </div>
+
+      {# Activity counts grid — supplemental, no color coding #}
+      <div class="grid grid-cols-3 sm:grid-cols-6 gap-2 text-xs">
+        <div class="text-center px-2 py-1.5 rounded bg-slate-50">
+          <div class="text-slate-500">Appts</div>
+          <div class="font-mono font-semibold">{{ r.appointments_set }}</div>
+        </div>
+        <div class="text-center px-2 py-1.5 rounded bg-slate-50">
+          <div class="text-slate-500">Convs</div>
+          <div class="font-mono font-semibold">{{ r.conversations_2min }}</div>
+        </div>
+        <div class="text-center px-2 py-1.5 rounded bg-slate-50">
+          <div class="text-slate-500">Calls</div>
+          <div class="font-mono font-semibold">{{ r.call_volume }}</div>
+        </div>
+        <div class="text-center px-2 py-1.5 rounded bg-slate-50">
+          <div class="text-slate-500">Texts</div>
+          <div class="font-mono font-semibold">{{ r.texts_sent }}</div>
+        </div>
+        <div class="text-center px-2 py-1.5 rounded bg-slate-50">
+          <div class="text-slate-500">Emails</div>
+          <div class="font-mono font-semibold">{{ r.emails_sent }}</div>
+        </div>
+        <div class="text-center px-2 py-1.5 rounded {% if r.new_leads_not_acted_on > 0 %}bg-rose-50{% else %}bg-slate-50{% endif %}">
+          <div class="text-slate-500">Stale</div>
+          <div class="font-mono font-semibold {% if r.new_leads_not_acted_on > 0 %}text-rose-700{% endif %}">
+            {{ r.new_leads_not_acted_on }}
+          </div>
+        </div>
+      </div>
+
+      <p class="text-[10px] text-slate-400 mt-2">
+        {{ r.total_zillow_leads }} Zillow lead{{ '' if r.total_zillow_leads == 1 else 's' }}
+        · snapshot {{ r.snapshot_date }}
+      </p>
+    </li>
+    {% endfor %}
+  </ul>
+</section>
+
+{% endif %}

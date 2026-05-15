@@ -1,292 +1,443 @@
-"""Tests for the FUB daily metrics calculator."""
+"""Tests for src/fub_daily_metrics.py — daily activity metric calculations."""
 
 from __future__ import annotations
 
-import sqlite3
-import tempfile
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, date, datetime
 
-from src.fub_daily_metrics import (
-    TARGETS,
-    calc_agent_metrics,
-    calc_response_time,
-    calc_team_averages,
-    is_zillow_lead,
-    save_daily_snapshot,
-)
+import pytest
+import responses
 
-# ── Fixtures ─────────────────────────────────────────────────────
+from config import settings
+from src import fub_daily_metrics as fdm
+
+_FIXED_TODAY = date(2026, 5, 15)
 
 
-def _make_lead(
-    source="Zillow Preferred",
-    source_id=14,
-    contacted=1,
-    stage_id=29,
-    created_offset_hours=24,
-    first_contact_offset_hours=23.5,
-    calls_out=2,
-    texts_sent=3,
-    emails_sent=1,
-):
-    """Create a mock FUB lead dict."""
-    now = datetime.now(UTC)
-    created = now - timedelta(hours=created_offset_hours)
-    first_contact = now - timedelta(hours=first_contact_offset_hours)
+# ── Helpers ──────────────────────────────────────────────────────────────────
 
-    return {
-        "id": 1000,
+
+def _person(
+    *,
+    person_id: int = 1,
+    source: str = "Zillow Preferred",
+    source_id: int | None = 14,
+    created: str = "2026-05-10T14:00:00Z",
+    contacted: int = 1,
+    first_call: str | None = "2026-05-10T14:02:00Z",
+    last_sent_text: str | None = None,
+    last_sent_email: str | None = None,
+    calls_outgoing: int = 0,
+    texts_sent: int = 0,
+    emails_sent: int = 0,
+    calls_duration: int = 0,
+    stage_id: int | None = 28,
+) -> dict:
+    """Build a synthetic FUB person record with realistic field names."""
+    p: dict = {
+        "id": person_id,
         "source": source,
-        "sourceId": source_id,
+        "created": created,
         "contacted": contacted,
-        "stageId": stage_id,
-        "created": created.isoformat(),
-        "lastOutgoingCall": first_contact.isoformat() if calls_out > 0 else None,
-        "lastSentText": first_contact.isoformat() if texts_sent > 0 else None,
-        "lastSentEmail": first_contact.isoformat() if emails_sent > 0 else None,
-        "firstCall": 120 if calls_out > 0 else 0,
-        "callsOutgoing": calls_out,
-        "callsIncoming": 1,
+        "firstCall": first_call,
+        "lastSentText": last_sent_text,
+        "lastSentEmail": last_sent_email,
+        "callsOutgoing": calls_outgoing,
         "textsSent": texts_sent,
-        "textsReceived": 2,
         "emailsSent": emails_sent,
-        "emailsReceived": 0,
+        "callsDuration": calls_duration,
+        "stageId": stage_id,
     }
+    if source_id is not None:
+        p["sourceId"] = source_id
+    return p
 
 
-# ── is_zillow_lead ───────────────────────────────────────────────
+# ── month_start ──────────────────────────────────────────────────────────────
 
 
-def test_zillow_lead_by_source_id():
-    assert is_zillow_lead({"sourceId": 14, "source": "something"})
+class TestMonthStart:
+    def test_returns_first_of_current_month(self):
+        assert fdm.month_start(date(2026, 5, 15)) == "2026-05-01"
+
+    def test_already_first(self):
+        assert fdm.month_start(date(2026, 1, 1)) == "2026-01-01"
 
 
-def test_zillow_lead_by_source_name():
-    assert is_zillow_lead({"sourceId": 99, "source": "Zillow Preferred"})
+# ── _parse_ts ────────────────────────────────────────────────────────────────
 
 
-def test_zillow_lead_by_source_name_flex():
-    assert is_zillow_lead({"sourceId": 99, "source": "Zillow Flex"})
+class TestParseTs:
+    def test_iso_with_z(self):
+        ts = fdm._parse_ts("2026-05-10T14:00:00Z")
+        assert ts == datetime(2026, 5, 10, 14, 0, 0, tzinfo=UTC)
+
+    def test_iso_with_offset(self):
+        ts = fdm._parse_ts("2026-05-10T14:00:00+00:00")
+        assert ts == datetime(2026, 5, 10, 14, 0, 0, tzinfo=UTC)
+
+    def test_none(self):
+        assert fdm._parse_ts(None) is None
+
+    def test_zero_int(self):
+        assert fdm._parse_ts(0) is None
+
+    def test_empty_string(self):
+        assert fdm._parse_ts("") is None
+        assert fdm._parse_ts("   ") is None
+
+    def test_garbage_string(self):
+        assert fdm._parse_ts("not a date") is None
+
+    def test_epoch_seconds(self):
+        ts = fdm._parse_ts(1747920000)
+        assert ts is not None
+        assert ts.tzinfo is UTC
 
 
-def test_non_zillow_lead():
-    assert not is_zillow_lead({"sourceId": 22, "source": "Agent-generated"})
+# ── is_zillow_preferred ──────────────────────────────────────────────────────
 
 
-def test_none_source():
-    assert not is_zillow_lead({"sourceId": None, "source": None})
+class TestZillowFilter:
+    def test_matches_by_source_id(self):
+        assert fdm.is_zillow_preferred({"sourceId": 14, "source": "anything"})
+
+    def test_matches_by_source_name_case_insensitive(self):
+        assert fdm.is_zillow_preferred({"source": "Zillow Preferred"})
+        assert fdm.is_zillow_preferred({"source": "zillow preferred"})
+
+    def test_matches_zillow_flex(self):
+        assert fdm.is_zillow_preferred({"source": "Zillow Flex"})
+
+    def test_rejects_other_sources(self):
+        assert not fdm.is_zillow_preferred({"source": "Realtor.com"})
+        assert not fdm.is_zillow_preferred({"sourceId": 7, "source": "Web Form"})
+
+    def test_rejects_empty(self):
+        assert not fdm.is_zillow_preferred({})
 
 
-# ── calc_response_time ───────────────────────────────────────────
+# ── _response_time_seconds ───────────────────────────────────────────────────
 
 
-def test_response_time_from_call():
-    lead = _make_lead(first_contact_offset_hours=23.5)
-    rt = calc_response_time(lead)
-    assert rt is not None
-    assert 1700 < rt < 1900  # ~30 min = 1800s
+class TestResponseTime:
+    def test_uses_first_call_when_only_call_present(self):
+        p = _person(
+            created="2026-05-10T14:00:00Z",
+            first_call="2026-05-10T14:05:00Z",
+            last_sent_text=None,
+            last_sent_email=None,
+        )
+        assert fdm._response_time_seconds(p) == 300.0
+
+    def test_picks_earliest_of_three_signals(self):
+        p = _person(
+            created="2026-05-10T14:00:00Z",
+            first_call="2026-05-10T14:10:00Z",
+            last_sent_text="2026-05-10T14:02:00Z",  # earliest
+            last_sent_email="2026-05-10T14:05:00Z",
+        )
+        assert fdm._response_time_seconds(p) == 120.0
+
+    def test_returns_none_when_no_contact(self):
+        p = _person(first_call=None, last_sent_text=None, last_sent_email=None)
+        assert fdm._response_time_seconds(p) is None
+
+    def test_returns_none_when_created_missing(self):
+        p = _person(created=None, first_call="2026-05-10T14:05:00Z")
+        assert fdm._response_time_seconds(p) is None
+
+    def test_ignores_signals_before_created(self):
+        """Stale firstCall from before this lead was even assigned should be skipped."""
+        p = _person(
+            created="2026-05-10T14:00:00Z",
+            first_call="2026-05-09T10:00:00Z",  # before created
+            last_sent_text="2026-05-10T14:03:00Z",
+            last_sent_email=None,
+        )
+        assert fdm._response_time_seconds(p) == 180.0
+
+    def test_negative_clamped_to_zero(self):
+        """Even if everything is stale, we never return a negative number."""
+        p = _person(
+            created="2026-05-10T14:00:00Z",
+            first_call="2026-05-09T10:00:00Z",
+            last_sent_text=None,
+            last_sent_email=None,
+        )
+        assert fdm._response_time_seconds(p) is None
 
 
-def test_response_time_no_contact():
-    lead = _make_lead(contacted=0, calls_out=0, texts_sent=0, emails_sent=0)
-    lead["lastOutgoingCall"] = None
-    lead["lastSentText"] = None
-    lead["lastSentEmail"] = None
-    lead["lastCommunication"] = None
-    assert calc_response_time(lead) is None
+# ── calculate_agent_metrics ──────────────────────────────────────────────────
 
 
-def test_response_time_no_created():
-    lead = _make_lead()
-    lead["created"] = None
-    assert calc_response_time(lead) is None
+class TestCalculateAgentMetrics:
+    def test_empty_list_returns_zero_metrics(self):
+        m = fdm.calculate_agent_metrics([])
+        assert m["total_zillow_leads"] == 0
+        assert m["activity_points"] == 0
+        assert m["response_time_seconds"] is None
+        assert m["contact_rate"] is None
+        assert m["pickup_rate"] is None
+        # Counts are 0, not None
+        assert m["call_volume"] == 0
+        assert m["texts_sent"] == 0
+        assert m["emails_sent"] == 0
+
+    def test_contact_rate(self):
+        people = [
+            _person(person_id=1, contacted=1),
+            _person(person_id=2, contacted=1),
+            _person(person_id=3, contacted=0, first_call=None),
+            _person(person_id=4, contacted=0, first_call=None),
+        ]
+        m = fdm.calculate_agent_metrics(people)
+        assert m["contact_rate"] == 0.5
+
+    def test_appointment_rate_uses_stage_29_or_30(self):
+        people = [
+            _person(person_id=1, stage_id=29),
+            _person(person_id=2, stage_id=30),
+            _person(person_id=3, stage_id=28),
+            _person(person_id=4, stage_id=26),
+        ]
+        m = fdm.calculate_agent_metrics(people)
+        assert m["appointment_rate"] == 0.5
+        assert m["appointments_set"] == 2
+
+    def test_lead_acceptance_anything_past_new(self):
+        people = [
+            _person(person_id=1, stage_id=26),  # New, not accepted
+            _person(person_id=2, stage_id=27),  # accepted
+            _person(person_id=3, stage_id=28),  # accepted
+            _person(person_id=4, stage_id=29),  # accepted
+        ]
+        m = fdm.calculate_agent_metrics(people)
+        assert m["lead_acceptance_rate"] == 0.75
+
+    def test_pickup_rate_only_counts_called_leads(self):
+        """Leads with no first_call are excluded from the pickup denominator."""
+        people = [
+            _person(
+                person_id=1, first_call="2026-05-10T14:01:00Z", calls_duration=180
+            ),  # picked up
+            _person(person_id=2, first_call="2026-05-10T14:01:00Z", calls_duration=5),  # voicemail
+            _person(person_id=3, first_call=None, calls_duration=0),  # never called → excluded
+        ]
+        m = fdm.calculate_agent_metrics(people)
+        # 1 of 2 attempts picked up
+        assert m["pickup_rate"] == 0.5
+
+    def test_pickup_rate_none_when_no_calls_attempted(self):
+        people = [_person(person_id=1, first_call=None, calls_duration=0)]
+        m = fdm.calculate_agent_metrics(people)
+        assert m["pickup_rate"] is None
+
+    def test_activity_points_weighted_correctly(self):
+        people = [
+            _person(
+                person_id=1,
+                stage_id=29,  # +500 (appt set)
+                calls_duration=200,  # +100 (conversation 2+ min)
+                calls_outgoing=3,  # +30
+                texts_sent=10,  # +20
+                emails_sent=5,  # +5
+                first_call="2026-05-10T14:01:00Z",
+            )
+        ]
+        m = fdm.calculate_agent_metrics(people)
+        assert m["activity_points"] == 500 + 100 + 30 + 20 + 5
+        assert m["appointments_set"] == 1
+        assert m["conversations_2min"] == 1
+
+    def test_response_time_is_average_of_responded_leads(self):
+        people = [
+            _person(
+                person_id=1,
+                created="2026-05-10T14:00:00Z",
+                first_call="2026-05-10T14:01:00Z",  # 60s
+            ),
+            _person(
+                person_id=2,
+                created="2026-05-10T14:00:00Z",
+                first_call="2026-05-10T14:05:00Z",  # 300s
+            ),
+            _person(person_id=3, first_call=None),  # excluded
+        ]
+        m = fdm.calculate_agent_metrics(people)
+        assert m["response_time_seconds"] == 180.0
+
+    def test_new_leads_not_acted_on(self):
+        people = [
+            _person(person_id=1, stage_id=26, contacted=0, first_call=None),  # stale
+            _person(person_id=2, stage_id=26, contacted=1, first_call="2026-05-10T14:01:00Z"),
+            _person(person_id=3, stage_id=28, contacted=1),
+        ]
+        m = fdm.calculate_agent_metrics(people)
+        assert m["new_leads_not_acted_on"] == 1
+
+    def test_handles_missing_fields_gracefully(self):
+        """A sparse FUB record (missing optional fields) shouldn't blow up."""
+        people = [{"id": 1, "source": "Zillow Preferred", "created": "2026-05-10T14:00:00Z"}]
+        m = fdm.calculate_agent_metrics(people)
+        assert m["total_zillow_leads"] == 1
+        assert m["call_volume"] == 0
 
 
-# ── calc_agent_metrics ───────────────────────────────────────────
+# ── HTTP layer (responses-mocked) ─────────────────────────────────────────────
 
 
-def test_empty_leads():
-    m = calc_agent_metrics([])
-    assert m["total_zillow_leads"] == 0
-    assert m["response_time_avg"] is None
-    assert m["contact_rate"] is None
+@pytest.fixture
+def fub_api_key(monkeypatch):
+    monkeypatch.setattr(settings, "FUB_API_KEY", "test-key")
+    monkeypatch.setattr(fdm, "FUB_API_KEY", "test-key")
 
 
-def test_no_zillow_leads():
-    leads = [_make_lead(source="Agent-generated", source_id=22)]
-    m = calc_agent_metrics(leads)
-    assert m["total_zillow_leads"] == 0
-    assert m["total_all_leads"] == 1
-
-
-def test_single_zillow_lead():
-    leads = [_make_lead()]
-    m = calc_agent_metrics(leads)
-    assert m["total_zillow_leads"] == 1
-    assert m["contact_rate"] == 1.0
-    assert m["calls_outgoing"] == 2
-    assert m["texts_sent"] == 3
-    assert m["appointment_rate"] == 1.0  # stageId=29
-
-
-def test_mixed_leads():
-    leads = [
-        _make_lead(contacted=1, stage_id=30),
-        _make_lead(contacted=0, stage_id=26),
-        _make_lead(source="Agent-generated", source_id=22),
-    ]
-    m = calc_agent_metrics(leads)
-    assert m["total_zillow_leads"] == 2
-    assert m["total_all_leads"] == 3
-    assert m["contact_rate"] == 0.5
-    assert m["appointment_rate"] == 0.5  # 1 out of 2 Zillow leads
-
-
-def test_appointment_rate_below_threshold():
-    leads = [_make_lead(stage_id=27)]  # "Attempted contact" — not an appointment
-    m = calc_agent_metrics(leads)
-    assert m["appointment_rate"] == 0.0
-
-
-def test_lead_acceptance_rate():
-    leads = [
-        _make_lead(stage_id=28),  # "Spoke with customer" — accepted
-        _make_lead(stage_id=26),  # "New" — not accepted
-    ]
-    m = calc_agent_metrics(leads)
-    assert m["lead_acceptance_rate"] == 0.5
-
-
-# ── calc_team_averages ───────────────────────────────────────────
-
-
-def test_team_averages_empty():
-    team = calc_team_averages([])
-    assert team["total_zillow_leads"] == 0
-
-
-def test_team_averages_two_agents():
-    results = [
-        {
-            "agent_id": 1,
-            "agent_name": "Alice",
-            "metrics": {
-                "total_zillow_leads": 10,
-                "total_all_leads": 15,
-                "response_time_avg": 200,
-                "contact_rate": 0.8,
-                "calls_outgoing": 20,
-                "calls_per_lead": 2.0,
-                "texts_sent": 30,
-                "texts_per_lead": 3.0,
-                "emails_sent": 5,
-                "appointment_rate": 0.3,
-                "lead_acceptance_rate": 0.9,
+class TestFetchPeopleForAgent:
+    @responses.activate
+    def test_single_page(self, fub_api_key):
+        responses.add(
+            responses.GET,
+            "https://api.followupboss.com/v1/people",
+            json={
+                "_metadata": {"total": 2, "limit": 100, "offset": 0},
+                "people": [_person(person_id=1), _person(person_id=2)],
             },
-        },
-        {
-            "agent_id": 2,
-            "agent_name": "Bob",
-            "metrics": {
-                "total_zillow_leads": 5,
-                "total_all_leads": 8,
-                "response_time_avg": 400,
-                "contact_rate": 0.6,
-                "calls_outgoing": 10,
-                "calls_per_lead": 2.0,
-                "texts_sent": 15,
-                "texts_per_lead": 3.0,
-                "emails_sent": 3,
-                "appointment_rate": 0.2,
-                "lead_acceptance_rate": 0.8,
-            },
-        },
-    ]
-    team = calc_team_averages(results)
-    assert team["total_zillow_leads"] == 15
-    assert team["response_time_avg"] == 300.0
-    assert team["contact_rate"] == 0.7
-    assert team["appointment_rate"] == 0.25
+            status=200,
+        )
+        people = fdm.fetch_people_for_agent("42", "2026-05-01")
+        assert len(people) == 2
 
-
-# ── save_daily_snapshot ──────────────────────────────────────────
-
-
-def test_save_snapshot():
-    with tempfile.NamedTemporaryFile(suffix=".db", delete=False) as f:
-        db_path = f.name
-
-    results = [
-        {
-            "agent_id": 1,
-            "agent_name": "Test Agent",
-            "metrics": {
-                "total_zillow_leads": 5,
-                "total_all_leads": 10,
-                "response_time_avg": 180.5,
-                "contact_rate": 0.8,
-                "calls_outgoing": 15,
-                "calls_per_lead": 3.0,
-                "texts_sent": 20,
-                "texts_per_lead": 4.0,
-                "emails_sent": 5,
-                "appointment_rate": 0.4,
-                "lead_acceptance_rate": 0.9,
-            },
+    @responses.activate
+    def test_pagination_offset(self, fub_api_key):
+        # Two pages of 100, then a short page of 10.
+        page1 = {
+            "_metadata": {"total": 210, "limit": 100, "offset": 0},
+            "people": [_person(person_id=i) for i in range(100)],
         }
-    ]
-
-    save_daily_snapshot(results, db_path=db_path)
-
-    conn = sqlite3.connect(db_path)
-    rows = conn.execute("SELECT * FROM daily_snapshots").fetchall()
-    conn.close()
-
-    assert len(rows) == 1
-    assert rows[0][3] == "Test Agent"  # agent_name
-    assert rows[0][4] == 5  # total_zillow_leads
-
-
-def test_save_snapshot_upsert():
-    """Saving twice on the same day should update, not duplicate."""
-    with tempfile.NamedTemporaryFile(suffix=".db", delete=False) as f:
-        db_path = f.name
-
-    results = [
-        {
-            "agent_id": 1,
-            "agent_name": "Agent A",
-            "metrics": {
-                "total_zillow_leads": 3,
-                "total_all_leads": 5,
-                "response_time_avg": 100,
-                "contact_rate": 0.5,
-                "calls_outgoing": 6,
-                "calls_per_lead": 2.0,
-                "texts_sent": 9,
-                "texts_per_lead": 3.0,
-                "emails_sent": 2,
-                "appointment_rate": 0.1,
-                "lead_acceptance_rate": 0.7,
-            },
+        page2 = {
+            "_metadata": {"total": 210, "limit": 100, "offset": 100},
+            "people": [_person(person_id=i) for i in range(100, 200)],
         }
-    ]
+        page3 = {
+            "_metadata": {"total": 210, "limit": 100, "offset": 200},
+            "people": [_person(person_id=i) for i in range(200, 210)],
+        }
+        responses.add(
+            responses.GET,
+            "https://api.followupboss.com/v1/people",
+            json=page1,
+            status=200,
+        )
+        responses.add(
+            responses.GET,
+            "https://api.followupboss.com/v1/people",
+            json=page2,
+            status=200,
+        )
+        responses.add(
+            responses.GET,
+            "https://api.followupboss.com/v1/people",
+            json=page3,
+            status=200,
+        )
 
-    save_daily_snapshot(results, db_path=db_path)
-    save_daily_snapshot(results, db_path=db_path)
+        people = fdm.fetch_people_for_agent("42", "2026-05-01")
+        assert len(people) == 210
 
-    conn = sqlite3.connect(db_path)
-    count = conn.execute("SELECT COUNT(*) FROM daily_snapshots").fetchone()[0]
-    conn.close()
+    @responses.activate
+    def test_short_page_terminates(self, fub_api_key):
+        responses.add(
+            responses.GET,
+            "https://api.followupboss.com/v1/people",
+            json={"_metadata": {"total": 5}, "people": [_person(person_id=i) for i in range(5)]},
+            status=200,
+        )
+        people = fdm.fetch_people_for_agent("42", "2026-05-01")
+        assert len(people) == 5
 
-    assert count == 1  # Upsert, not duplicate
+    @responses.activate
+    def test_empty_results(self, fub_api_key):
+        responses.add(
+            responses.GET,
+            "https://api.followupboss.com/v1/people",
+            json={"_metadata": {"total": 0}, "people": []},
+            status=200,
+        )
+        people = fdm.fetch_people_for_agent("42", "2026-05-01")
+        assert people == []
+
+    def test_raises_without_api_key(self, monkeypatch):
+        monkeypatch.setattr(fdm, "FUB_API_KEY", "")
+        with pytest.raises(OSError, match="FUB_API_KEY"):
+            fdm.fetch_people_for_agent("42", "2026-05-01")
 
 
-# ── TARGETS sanity ───────────────────────────────────────────────
+# ── pull_daily_metrics + save_results integration ─────────────────────────────
 
 
-def test_targets_exist():
-    assert "response_time_sec" in TARGETS
-    assert "contact_rate" in TARGETS
-    assert "appointment_rate" in TARGETS
-    assert TARGETS["response_time_sec"] == 300
+class TestPullDailyMetricsIntegration:
+    @responses.activate
+    def test_end_to_end_with_mocked_fub(self, fub_api_key, monkeypatch, isolated_db):
+        # Roster: one agent (skip auto-discovery by populating AGENTS).
+        monkeypatch.setattr(
+            settings,
+            "AGENTS",
+            [{"name": "Alex", "email": "alex@x.com", "fub_agent_id": "42"}],
+        )
+
+        responses.add(
+            responses.GET,
+            "https://api.followupboss.com/v1/people",
+            json={
+                "_metadata": {"total": 2, "limit": 100, "offset": 0},
+                "people": [
+                    _person(
+                        person_id=1,
+                        contacted=1,
+                        calls_outgoing=3,
+                        texts_sent=4,
+                        emails_sent=2,
+                        stage_id=29,
+                        calls_duration=200,
+                    ),
+                    _person(
+                        person_id=2,
+                        contacted=0,
+                        source="Realtor.com",
+                        source_id=99,
+                    ),  # filtered out
+                ],
+            },
+            status=200,
+        )
+
+        results = fdm.pull_daily_metrics(today=_FIXED_TODAY)
+        assert len(results) == 1
+        r = results[0]
+        assert r["agent_id"] == "42"
+        assert r["snapshot_date"] == "2026-05-15"
+        assert r["window_start"] == "2026-05-01"
+        assert r["metrics"]["total_zillow_leads"] == 1
+        assert r["metrics"]["appointments_set"] == 1
+
+        saved = fdm.save_results(results)
+        assert saved == 1
+
+        from src import storage
+
+        snap = storage.latest_daily_snapshot("42")
+        assert snap is not None
+        assert snap["snapshot_date"] == "2026-05-15"
+        assert snap["metrics"]["total_zillow_leads"] == 1.0
+        assert snap["metrics"]["appointments_set"] == 1.0
+
+    def test_mock_results_round_trip(self, isolated_db):
+        results = fdm.mock_daily_results(today=_FIXED_TODAY)
+        fdm.save_results(results)
+
+        from src import storage
+
+        all_snaps = storage.latest_daily_snapshots()
+        assert len(all_snaps) == 2
+        names = {s["name"] for s in all_snaps}
+        assert names == {"Alex Rivera", "Jordan Lee"}
