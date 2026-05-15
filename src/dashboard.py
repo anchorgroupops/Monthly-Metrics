@@ -115,6 +115,13 @@ def create_app() -> Flask:
     def inject_brand():
         return {"brand": BRAND}
 
+    @app.after_request
+    def add_security_headers(response):
+        response.headers.setdefault("X-Frame-Options", "DENY")
+        response.headers.setdefault("X-Content-Type-Options", "nosniff")
+        response.headers.setdefault("Referrer-Policy", "strict-origin-when-cross-origin")
+        return response
+
     # Clean up runs left in 'running' from a prior worker that died — otherwise
     # the manual-pull button would stay disabled forever after a gunicorn crash.
     _reap_stale_runs()
@@ -422,53 +429,26 @@ def _register_routes(app: Flask, limiter: Limiter) -> None:
     @csrf.exempt
     def healthz():
         import shutil
-        from datetime import datetime as _dt
 
         from flask import jsonify
 
-        ok = True
         db_writable = False
-        last_heartbeat_age_hours: float | None = None
-        draft_queue_size = 0
         disk_used_pct: float = 0.0
 
         try:
             with storage.connect() as conn:
                 conn.execute("SELECT 1").fetchone()
                 db_writable = True
-
-                row = conn.execute(
-                    "SELECT created_at FROM runs WHERE source = 'fub' ORDER BY id DESC LIMIT 1"
-                ).fetchone()
-                if row and row["created_at"]:
-                    try:
-                        last = _dt.fromisoformat(row["created_at"])
-                        delta = _dt.utcnow() - last
-                        last_heartbeat_age_hours = round(delta.total_seconds() / 3600, 2)
-                    except (TypeError, ValueError):
-                        pass
-
-                draft_queue_size = conn.execute(
-                    "SELECT COUNT(*) FROM drafts WHERE status='pending'"
-                ).fetchone()[0]
-        except Exception:
-            ok = False
+        except Exception:  # noqa: S110 — db_writable stays False; reflected in response
+            pass
 
         try:
             usage = shutil.disk_usage(str(storage.DB_PATH.parent))
             disk_used_pct = round((usage.used / usage.total) * 100, 1)
-        except Exception:  # noqa: S110 — disk_used_pct is best-effort; missing it doesn't degrade health
+        except Exception:  # noqa: S110 — best-effort, missing it doesn't degrade liveness
             pass
-        # Disk-full alerting is scripts/disk_check.sh's responsibility — healthz
-        # just reports the percent so monitors can read it.
 
-        payload = {
-            "ok": ok and db_writable,
-            "db_writable": db_writable,
-            "last_heartbeat_age_hours": last_heartbeat_age_hours,
-            "draft_queue_size": draft_queue_size,
-            "disk_used_pct": disk_used_pct,
-        }
+        payload = {"ok": db_writable, "db_writable": db_writable, "disk_used_pct": disk_used_pct}
         return jsonify(payload), (200 if payload["ok"] else 503)
 
     @app.route("/login", methods=["GET", "POST"])
@@ -616,6 +596,7 @@ def _register_routes(app: Flask, limiter: Limiter) -> None:
 
     @app.route("/daily/refresh", methods=["POST"])
     @login_required
+    @limiter.limit("6 per hour", methods=["POST"])
     def daily_refresh():
         from config.settings import FUB_API_KEY
 
@@ -638,6 +619,7 @@ def _register_routes(app: Flask, limiter: Limiter) -> None:
 
     @app.route("/pull-now", methods=["POST"])
     @login_required
+    @limiter.limit("3 per hour", methods=["POST"])
     def pull_now():
         from config.settings import FUB_API_KEY
 

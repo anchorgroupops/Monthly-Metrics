@@ -76,11 +76,10 @@ class TestHealthz:
         data = json.loads(resp.get_data(as_text=True))
         assert data["ok"] is True
         assert data["db_writable"] is True
-        assert isinstance(data["draft_queue_size"], int)
         assert isinstance(data["disk_used_pct"], (int, float))
-        assert data["last_heartbeat_age_hours"] is None or isinstance(
-            data["last_heartbeat_age_hours"], (int, float)
-        )
+        # ops-state fields are intentionally absent from the public liveness probe
+        assert "draft_queue_size" not in data
+        assert "last_heartbeat_age_hours" not in data
 
     def test_returns_503_when_db_not_writable(self, client, isolated_db, monkeypatch):
         import json
@@ -97,43 +96,6 @@ class TestHealthz:
         data = json.loads(resp.get_data(as_text=True))
         assert data["ok"] is False
         assert data["db_writable"] is False
-
-    def test_draft_queue_size_counts_pending(self, client, isolated_db):
-        import json
-
-        from src import storage
-
-        storage.save_period(
-            [
-                {
-                    "agent_id": "100",
-                    "name": "A",
-                    "email": "a@x",
-                    "period": "2026-04",
-                    "csat": 0.85,
-                    "_raw": {},
-                }
-            ],
-            source="test",
-        )
-        storage.queue_draft("100", "2026-04", "<html/>")
-
-        resp = client.get("/healthz")
-        data = json.loads(resp.get_data(as_text=True))
-        assert data["draft_queue_size"] == 1
-
-    def test_last_heartbeat_age_populated_after_fub_run(self, client, isolated_db):
-        import json
-
-        from src import storage
-
-        run_id = storage.start_run(source="fub")
-        storage.finish_run(run_id, "ok")
-
-        resp = client.get("/healthz")
-        data = json.loads(resp.get_data(as_text=True))
-        assert data["last_heartbeat_age_hours"] is not None
-        assert data["last_heartbeat_age_hours"] >= 0
 
 
 # ── Root redirect ────────────────────────────────────────────────────────────
@@ -814,3 +776,19 @@ class TestProductionMode:
         assert app.config.get("SESSION_COOKIE_HTTPONLY") is True
         assert app.config.get("SESSION_COOKIE_SAMESITE") == "Lax"
         assert app.config.get("PREFERRED_URL_SCHEME") == "https"
+
+
+# ── Security headers ─────────────────────────────────────────────────────────
+
+
+class TestSecurityHeaders:
+    def test_security_headers_on_every_response(self, client):
+        resp = client.get("/login")
+        assert resp.headers.get("X-Frame-Options") == "DENY"
+        assert resp.headers.get("X-Content-Type-Options") == "nosniff"
+        assert resp.headers.get("Referrer-Policy") == "strict-origin-when-cross-origin"
+
+    def test_security_headers_on_healthz(self, client):
+        resp = client.get("/healthz")
+        assert resp.headers.get("X-Frame-Options") == "DENY"
+        assert resp.headers.get("X-Content-Type-Options") == "nosniff"
