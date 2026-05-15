@@ -191,17 +191,18 @@ def fetch_all_agents(period: str | None = None) -> list[dict]:
 
     Returns a list of dicts:
     {
-        "agent_id":       str,
-        "name":           str,
-        "email":          str,
-        "period":         str,   # e.g. "March 2026"
-        "start_date":     str,
-        "end_date":       str,
-        "pCVR":           float | None,   # 0.0–1.0
-        "pickup_rate":    float | None,   # 0.0–1.0
-        "csat":           float | None,   # raw score
-        "zhl_transfers":  int   | None,
-        "_raw":           dict,           # untouched API response for debugging
+        "agent_id":        str,
+        "name":            str,
+        "email":           str,
+        "period":          str,    # e.g. "April 2026"
+        "start_date":      str,
+        "end_date":        str,
+        "speed_to_action": float | None,  # seconds (lower is better; target 300s)
+        "work_with_rate":  float | None,  # 0.0–1.0
+        "csat":            float | None,  # 0.0–1.0
+        "appt_set_rate":   float | None,  # 0.0–1.0
+        "appt_met_rate":   float | None,  # 0.0–1.0
+        "_raw":            dict,          # untouched API response for debugging
     }
     """
     if not FUB_API_KEY:
@@ -243,19 +244,56 @@ def _normalize(raw: dict, agent_cfg: dict, period: str, start: str, end: str) ->
     """
     Map raw FUB API response fields to our standardized schema.
 
-    NOTE: FUB field names in the ZP report may vary — update the keys below
+    FUB field names in the ZP report may vary — update the fallback keys below
     once you confirm the actual response shape from your account.
-    Common observed fields are listed; add alternatives if needed.
     """
-    # Extract with fallbacks — FUB field names to confirm with your account rep
-    pCVR_raw = (
-        raw.get("predictedConversionRate") or raw.get("pCVR") or raw.get("conversionRatePredicted")
+    # speed_to_action: median seconds from inbound lead to first contact
+    sta_raw = (
+        raw.get("speedToAction")
+        or raw.get("responseTime")
+        or raw.get("medianResponseTimeSeconds")
+        or raw.get("speedToLead")
+        or raw.get("firstResponseTimeSeconds")
     )
-    pickup_raw = raw.get("pickupRate") or raw.get("callPickupRate") or raw.get("answerRate")
-    csat_raw = raw.get("csatScore") or raw.get("csat") or raw.get("satisfactionScore")
-    zhl_raw = (
-        raw.get("zhlTransfers") or raw.get("zillowHomeLoanTransfers") or raw.get("transferCount")
+
+    # work_with_rate: fraction of qualified leads signed to a working relationship
+    wwr_raw = (
+        raw.get("workWithRate")
+        or raw.get("workingRelationshipRate")
+        or raw.get("workWithPercentage")
     )
+
+    # csat: customer satisfaction as a 0–1 fraction (Zillow reports 0–100; divide if needed)
+    csat_raw = (
+        raw.get("csatScore")
+        or raw.get("csat")
+        or raw.get("satisfactionScore")
+        or raw.get("customerSatisfactionScore")
+    )
+
+    # appt_set_rate: fraction of qualified leads where an appointment was booked
+    asr_raw = (
+        raw.get("appointmentSetRate")
+        or raw.get("apptSetRate")
+        or raw.get("appointmentRate")
+        or raw.get("meetingSetRate")
+    )
+
+    # appt_met_rate: fraction of booked appointments the lead actually attended
+    amr_raw = (
+        raw.get("appointmentMetRate")
+        or raw.get("apptMetRate")
+        or raw.get("showRate")
+        or raw.get("appointmentShowRate")
+        or raw.get("meetingMetRate")
+    )
+
+    # Zillow sometimes returns CSAT as 0–100; normalise to 0–1
+    csat_val: float | None = None
+    if csat_raw is not None:
+        csat_val = float(csat_raw)
+        if csat_val > 1.0:
+            csat_val = csat_val / 100.0
 
     return {
         "agent_id": agent_cfg["fub_agent_id"],
@@ -264,10 +302,11 @@ def _normalize(raw: dict, agent_cfg: dict, period: str, start: str, end: str) ->
         "period": period,
         "start_date": start,
         "end_date": end,
-        "pCVR": float(pCVR_raw) if pCVR_raw is not None else None,
-        "pickup_rate": float(pickup_raw) if pickup_raw is not None else None,
-        "csat": float(csat_raw) if csat_raw is not None else None,
-        "zhl_transfers": int(zhl_raw) if zhl_raw is not None else None,
+        "speed_to_action": float(sta_raw) if sta_raw is not None else None,
+        "work_with_rate": float(wwr_raw) if wwr_raw is not None else None,
+        "csat": csat_val,
+        "appt_set_rate": float(asr_raw) if asr_raw is not None else None,
+        "appt_met_rate": float(amr_raw) if amr_raw is not None else None,
         "_raw": raw,
     }
 
@@ -281,10 +320,11 @@ def _null_record(agent_cfg: dict, period: str, start: str, end: str) -> dict:
         "period": period,
         "start_date": start,
         "end_date": end,
-        "pCVR": None,
-        "pickup_rate": None,
+        "speed_to_action": None,
+        "work_with_rate": None,
         "csat": None,
-        "zhl_transfers": None,
+        "appt_set_rate": None,
+        "appt_met_rate": None,
         "_raw": {},
         "_error": True,
     }
@@ -298,19 +338,20 @@ def mock_agents(period: str | None = None) -> list[dict]:
     Returns synthetic agent data for Review Mode testing without a live API key.
     Run: python main.py --mode review --mock
     """
-    period_label = period or "March 2026"
+    period_label = period or "April 2026"
     return [
         {
             "agent_id": "mock-001",
             "name": "Alex Rivera",
             "email": "alex@example.com",
             "period": period_label,
-            "start_date": "2026-03-01",
-            "end_date": "2026-03-31",
-            "pCVR": 0.038,
-            "pickup_rate": 0.91,
-            "csat": 4.7,
-            "zhl_transfers": 5,
+            "start_date": "2026-04-01",
+            "end_date": "2026-04-30",
+            "speed_to_action": 210.0,   # 3.5 min — green
+            "work_with_rate": 0.55,     # green
+            "csat": 0.91,               # green
+            "appt_set_rate": 0.65,      # green
+            "appt_met_rate": 0.78,      # green
             "_raw": {},
         },
         {
@@ -318,12 +359,13 @@ def mock_agents(period: str | None = None) -> list[dict]:
             "name": "Jordan Lee",
             "email": "jordan@example.com",
             "period": period_label,
-            "start_date": "2026-03-01",
-            "end_date": "2026-03-31",
-            "pCVR": 0.021,
-            "pickup_rate": 0.74,
-            "csat": 4.1,
-            "zhl_transfers": 2,
+            "start_date": "2026-04-01",
+            "end_date": "2026-04-30",
+            "speed_to_action": 480.0,   # 8 min — yellow
+            "work_with_rate": 0.42,     # yellow
+            "csat": 0.78,               # yellow
+            "appt_set_rate": 0.52,      # yellow
+            "appt_met_rate": 0.58,      # yellow
             "_raw": {},
         },
         {
@@ -331,12 +373,13 @@ def mock_agents(period: str | None = None) -> list[dict]:
             "name": "Morgan Chen",
             "email": "morgan@example.com",
             "period": period_label,
-            "start_date": "2026-03-01",
-            "end_date": "2026-03-31",
-            "pCVR": 0.015,
-            "pickup_rate": 0.61,
-            "csat": 3.8,
-            "zhl_transfers": 1,
+            "start_date": "2026-04-01",
+            "end_date": "2026-04-30",
+            "speed_to_action": 750.0,   # 12.5 min — red
+            "work_with_rate": 0.31,     # red
+            "csat": 0.72,               # red
+            "appt_set_rate": 0.38,      # red
+            "appt_met_rate": 0.45,      # red
             "_raw": {},
         },
     ]

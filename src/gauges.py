@@ -12,8 +12,8 @@ Gauge layout:
   - Bottom label: metric name
 
 Sizing classes:
-  - "hero"      → 200×120px  (pCVR — primary metric)
-  - "secondary" → 130×80px   (Pickup Rate, CSAT, ZHL)
+  - "hero"      → 200×120px  (Speed to Action — primary metric)
+  - "secondary" → 130×80px   (Work-With Rate, CSAT, Appt Set/Met Rate)
 """
 
 import math
@@ -120,12 +120,12 @@ def build_gauge(
     Build and return an inline SVG arc gauge string.
 
     Args:
-        value:      Raw metric value (e.g. 0.038 for pCVR, 4.7 for CSAT)
+        value:      Raw metric value (e.g. 240 for speed_to_action, 0.91 for csat)
         target:     Threshold target for the metric
         status:     "green" | "yellow" | "red" | "no_data"
-        label:      Display label (e.g. "Pickup Rate")
-        unit:       "percent" | "score" | "count"
-        metric_key: Internal key (e.g. "pCVR")
+        label:      Display label (e.g. "Speed to Action")
+        unit:       "percent" | "seconds" | "count"
+        metric_key: Internal key (e.g. "speed_to_action")
         size:       "hero" | "secondary"
 
     Returns:
@@ -228,10 +228,11 @@ def build_all_gauges(scored_agent: dict) -> dict:
 
     Returns:
     {
-        "pCVR":          "<svg>…</svg>",
-        "pickup_rate":   "<svg>…</svg>",
-        "csat":          "<svg>…</svg>",
-        "zhl_transfers": "<svg>…</svg>",
+        "speed_to_action": "<svg>…</svg>",
+        "work_with_rate":  "<svg>…</svg>",
+        "csat":            "<svg>…</svg>",
+        "appt_set_rate":   "<svg>…</svg>",
+        "appt_met_rate":   "<svg>…</svg>",
     }
     """
     return {
