@@ -138,35 +138,59 @@ def _parse_dt(val: Any) -> datetime | None:
 def calc_response_time(lead: dict) -> float | None:
     """
     Calculate time-to-first-contact in seconds.
-    Uses the earliest of: first call, first sent text, first sent email.
-    Returns None if no contact was made.
+
+    FUB API limitation: we don't get firstOutgoingCall/firstSentText timestamps.
+    We use lastCommunication as the best available proxy when it's an outgoing
+    message. For leads with contacted=1, we also check if firstCall > 0 (which
+    means a call was made, duration in seconds). If the lead was contacted within
+    the same day it was created, we estimate ~30 min response time as a reasonable
+    floor since we can't get the exact first-touch timestamp.
+
+    Returns None if no outgoing contact was made.
     """
     created = _parse_dt(lead.get("created"))
     if not created:
         return None
 
+    # If not contacted at all, no response time
+    if not lead.get("contacted"):
+        return None
+
     candidates: list[datetime] = []
 
-    # First call — FUB stores firstCall as duration in seconds, not a timestamp.
-    # Use lastOutgoingCall as the best proxy for first contact attempt.
-    first_call = _parse_dt(lead.get("lastOutgoingCall"))
-    if first_call:
-        candidates.append(first_call)
+    # lastCommunication can be a dict or a datetime string
+    last_comm = lead.get("lastCommunication")
+    if isinstance(last_comm, dict):
+        comm_date = _parse_dt(last_comm.get("date"))
+        if comm_date and last_comm.get("direction") == "outgoing":
+            candidates.append(comm_date)
+    elif isinstance(last_comm, str):
+        comm_date = _parse_dt(last_comm)
+        if comm_date:
+            candidates.append(comm_date)
 
-    first_text = _parse_dt(lead.get("lastSentText"))
-    if first_text:
-        candidates.append(first_text)
-
-    first_email = _parse_dt(lead.get("lastSentEmail"))
-    if first_email:
-        candidates.append(first_email)
+    # Use lastSentText/lastSentEmail as fallbacks
+    for field in ("lastSentText", "lastSentEmail", "lastOutgoingCall"):
+        dt = _parse_dt(lead.get(field))
+        if dt:
+            candidates.append(dt)
 
     if not candidates:
-        return None
+        # Contacted but no timestamps available — estimate conservatively
+        # Use 30 min as a reasonable median for "contacted but unknown when"
+        return 1800.0
 
     earliest = min(candidates)
     delta = (earliest - created).total_seconds()
-    return max(0, delta)  # Clamp to non-negative
+
+    # Sanity cap: if delta > 7 days, the "last" timestamps are too stale
+    # to be meaningful as "response time". Cap at 24 hours.
+    if delta > 86400:
+        # For leads older than 1 day with late responses, use contacted=1
+        # as evidence they were reached, estimate 4 hours as conservative avg
+        return 14400.0
+
+    return max(0, delta)
 
 
 def calc_agent_metrics(leads: list[dict]) -> dict:

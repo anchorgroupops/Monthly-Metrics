@@ -484,9 +484,7 @@ class TestCheckFubKey:
 
 
 class TestCmdPullBranches:
-    def test_pull_with_no_agents_falls_back_to_discovery(
-        self, isolated_db, monkeypatch, mocker
-    ):
+    def test_pull_with_no_agents_falls_back_to_discovery(self, isolated_db, monkeypatch, mocker):
         from config import settings
         from main import cmd_pull
 
