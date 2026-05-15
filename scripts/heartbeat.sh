@@ -75,4 +75,4 @@ fi
 
 echo
 echo "Done. Approve drafts via the dashboard:"
-echo "  https://anchor.joelycannoli.com/"
+echo "  https://metrics.joelycannoli.com/"

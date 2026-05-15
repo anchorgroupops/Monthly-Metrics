@@ -4,7 +4,7 @@
 
 set -euo pipefail
 
-URL="${URL:-https://anchor.joelycannoli.com/healthz}"
+URL="${URL:-https://metrics.joelycannoli.com/healthz}"
 APP_DIR="${APP_DIR:-/opt/Monthly-Metrics}"
 
 if ! curl -fsS --max-time 15 "$URL" >/dev/null; then

@@ -46,3 +46,4 @@ data/.last-alert
 
 # Stray git scratch file
 COMMIT_EDITMSG
+.claude/
