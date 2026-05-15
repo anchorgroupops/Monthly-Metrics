@@ -84,9 +84,9 @@ def _build_index(built_emails: list[dict], scored_agents: list[dict]) -> str:
         status = agent["overall_status"]
         bg, txt, icon = STATUS_STYLES.get(status, STATUS_STYLES["No Data"])
 
-        pCVR_metric = agent["metrics"].get("pCVR", {})
-        pCVR_val = pCVR_metric.get("value")
-        pCVR_display = f"{pCVR_val * 100:.1f}%" if pCVR_val is not None else "N/A"
+        sta_metric = agent["metrics"].get("speed_to_action", {})
+        sta_val = sta_metric.get("value")
+        sta_display = f"{int(sta_val)}s" if sta_val is not None else "N/A"
 
         cards.append(f"""
     <div class="card">
@@ -95,8 +95,8 @@ def _build_index(built_emails: list[dict], scored_agents: list[dict]) -> str:
         <span class="badge" style="background:{bg};color:{txt};">{icon} {status}</span>
       </div>
       <div class="card-body">
-        <span class="pcvr-label">pCVR</span>
-        <span class="pcvr-value">{pCVR_display}</span>
+        <span class="pcvr-label">Speed to Action</span>
+        <span class="pcvr-value">{sta_display}</span>
       </div>
       <div class="card-footer">
         <a href="{slug}.html" target="_blank" class="btn-preview">View Email →</a>

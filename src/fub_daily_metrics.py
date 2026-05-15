@@ -14,19 +14,24 @@ by diffing snapshots from different days — keeps storage simple and idempotent
 
 Metric set (the 8 daily metrics + activity points)
 --------------------------------------------------
-- ``response_time_seconds``      avg seconds from lead created to first contact
-- ``contact_rate``               fraction of leads with contacted=1            (0.0-1.0)
-- ``pickup_rate``                fraction of leads where firstCall connected   (0.0-1.0)
-- ``appointment_rate``           fraction of leads with stageId in (29, 30)    (0.0-1.0)
-- ``lead_acceptance_rate``       fraction of leads moved past 'New' (stage>26) (0.0-1.0)
-- ``call_volume``                sum of callsOutgoing                          (count)
-- ``texts_sent``                 sum of textsSent                              (count)
-- ``emails_sent``                sum of emailsSent                             (count)
-- ``conversations_2min``         count of leads with callsDuration >= 120s     (count)
-- ``appointments_set``           count of leads with stageId in (29, 30)       (count)
-- ``new_leads_not_acted_on``     count of leads with stageId == 26 and contacted=0
-- ``total_zillow_leads``         count of filtered Zillow Preferred leads      (count)
+Data sources follow FUB Open API guidance (dedicated endpoints preferred):
+
+- ``response_time_seconds``      avg seconds from lead created to first contact     [/people]
+- ``contact_rate``               fraction of leads with contacted=1                 [/people]
+- ``pickup_rate``                fraction of Zillow calls that connected (≥10s)     [/people proxy]
+- ``appointment_rate``           appointments set / total Zillow leads               [/appointments]
+- ``lead_acceptance_rate``       fraction of leads moved past 'New' (stage>26)      [/people]
+- ``call_volume``                outbound call attempts                              [/calls]
+- ``texts_sent``                 outbound texts sent (person aggregate fallback)     [/people]
+- ``emails_sent``                outbound emails sent (person aggregate fallback)    [/people]
+- ``conversations_2min``         outbound calls with duration >= 120s               [/calls]
+- ``appointments_set``           count of appointments created in the period         [/appointments]
+- ``new_leads_not_acted_on``     count of leads with stageId == 26 and contacted=0  [/people]
+- ``total_zillow_leads``         count of filtered Zillow Preferred leads            [/people]
 - ``activity_points``            weighted leaderboard score (see POINTS below)
+
+When /calls or /appointments return 404/403 the module falls back to person-level
+aggregates so daily pulls continue even if those endpoints aren't enabled.
 
 Activity-point weights match the gamification scheme:
     Appointments Set     × 500
@@ -239,6 +244,131 @@ def fetch_people_for_agent(assigned_user_id: str, created_after: str) -> list[di
     return collected
 
 
+# ── Calls fetch ──────────────────────────────────────────────────────────────
+
+
+def fetch_calls_for_agent(assigned_user_id: str, created_after: str) -> list[dict]:
+    """
+    Fetch outbound calls placed by this agent on or after ``created_after``.
+
+    FUB /calls fields used:
+      userId    — agent who placed the call
+      direction — "outbound" (we filter to outbound only)
+      duration  — call duration in seconds
+      created   — when the call was logged
+    """
+    if not FUB_API_KEY:
+        raise OSError("FUB_API_KEY is not set; cannot fetch calls.")
+
+    collected: list[dict] = []
+    offset = 0
+    limit = 100
+
+    while True:
+        params = {
+            "userId": assigned_user_id,
+            "createdAfter": created_after,
+            "direction": "outbound",
+            "limit": limit,
+            "offset": offset,
+        }
+        try:
+            data = _get("/calls", params=params)
+        except requests.HTTPError as exc:
+            status = exc.response.status_code if exc.response is not None else None
+            if status in (404, 403):
+                log.warning(
+                    "/calls returned %s for agent %s — falling back to person aggregates",
+                    status,
+                    assigned_user_id,
+                )
+                return []
+            raise
+        except Exception as exc:
+            log.warning(
+                "/calls fetch failed for agent %s (%s) — falling back to person aggregates",
+                assigned_user_id,
+                exc,
+            )
+            return []
+
+        calls = data.get("calls") or []
+        collected.extend(calls)
+
+        meta = data.get("_metadata") or {}
+        total = meta.get("total")
+        if not calls or len(calls) < limit:
+            break
+        offset += limit
+        if total is not None and offset >= total:
+            break
+        if offset >= 10000:
+            log.warning("Stopping at offset 10000 for calls/%s", assigned_user_id)
+            break
+
+    return collected
+
+
+def fetch_appointments_for_agent(assigned_user_id: str, created_after: str) -> list[dict]:
+    """
+    Fetch appointments created for this agent on or after ``created_after``.
+
+    FUB /appointments fields used:
+      userId    — agent who owns the appointment
+      outcome   — result ("Completed", "Met", "No Show", etc.)
+      created   — when the appointment was booked in FUB
+    """
+    if not FUB_API_KEY:
+        raise OSError("FUB_API_KEY is not set; cannot fetch appointments.")
+
+    collected: list[dict] = []
+    offset = 0
+    limit = 100
+
+    while True:
+        params = {
+            "userId": assigned_user_id,
+            "createdAfter": created_after,
+            "limit": limit,
+            "offset": offset,
+        }
+        try:
+            data = _get("/appointments", params=params)
+        except requests.HTTPError as exc:
+            status = exc.response.status_code if exc.response is not None else None
+            if status in (404, 403):
+                log.warning(
+                    "/appointments returned %s for agent %s — falling back to stage data",
+                    status,
+                    assigned_user_id,
+                )
+                return []
+            raise
+        except Exception as exc:
+            log.warning(
+                "/appointments fetch failed for agent %s (%s) — falling back to stage data",
+                assigned_user_id,
+                exc,
+            )
+            return []
+
+        appts = data.get("appointments") or []
+        collected.extend(appts)
+
+        meta = data.get("_metadata") or {}
+        total = meta.get("total")
+        if not appts or len(appts) < limit:
+            break
+        offset += limit
+        if total is not None and offset >= total:
+            break
+        if offset >= 5000:
+            log.warning("Stopping at offset 5000 for appointments/%s", assigned_user_id)
+            break
+
+    return collected
+
+
 # ── Metric calculation ────────────────────────────────────────────────────────
 
 
@@ -283,10 +413,21 @@ def _picked_up(person: dict) -> bool | None:
     return _last_call_duration(person) >= 10.0
 
 
-def calculate_agent_metrics(zillow_people: list[dict]) -> dict[str, float | int | None]:
+def calculate_agent_metrics(
+    zillow_people: list[dict],
+    calls: list[dict] | None = None,
+    appointments: list[dict] | None = None,
+) -> dict[str, float | int | None]:
     """
-    Aggregate the 8 daily metrics + activity points across one agent's filtered
-    Zillow Preferred leads. Returns a flat dict suitable for save_daily_snapshot.
+    Aggregate daily metrics + activity points for one agent.
+
+    zillow_people  → /people filtered to Zillow Preferred leads (required)
+    calls          → /calls outbound records for the period (preferred).
+                     When None, falls back to per-person callsOutgoing aggregates.
+    appointments   → /appointments records for the period (preferred).
+                     When None, falls back to stageId inference from people data.
+
+    Returns a flat dict suitable for save_daily_snapshot.
     """
     total = len(zillow_people)
     if total == 0:
@@ -306,16 +447,16 @@ def calculate_agent_metrics(zillow_people: list[dict]) -> dict[str, float | int 
             "activity_points": 0,
         }
 
+    # ── Metrics derived from People ───────────────────────────────────────────
     response_times: list[float] = []
     pickup_outcomes: list[bool] = []
     contacted_count = 0
-    appointment_count = 0
     accepted_count = 0
-    call_volume = 0
     texts_sent = 0
     emails_sent = 0
-    conversations_2min = 0
     new_not_acted_on = 0
+    # Stage-based appointment count (fallback when /appointments unavailable)
+    appt_from_stage = 0
 
     for p in zillow_people:
         rt = _response_time_seconds(p)
@@ -332,18 +473,33 @@ def calculate_agent_metrics(zillow_people: list[dict]) -> dict[str, float | int 
         stage_id = p.get("stageId")
         if isinstance(stage_id, int):
             if stage_id in APPT_STAGE_IDS:
-                appointment_count += 1
+                appt_from_stage += 1
             if stage_id > STAGE_NEW:
                 accepted_count += 1
             if stage_id == STAGE_NEW and int(p.get("contacted") or 0) == 0:
                 new_not_acted_on += 1
 
-        call_volume += int(p.get("callsOutgoing") or 0)
         texts_sent += int(p.get("textsSent") or 0)
         emails_sent += int(p.get("emailsSent") or 0)
 
-        if _last_call_duration(p) >= CONVERSATION_DURATION_SECONDS:
-            conversations_2min += 1
+    # ── Call metrics: dedicated /calls endpoint preferred ────────────────────
+    if calls is not None:
+        call_volume = len(calls)
+        conversations_2min = sum(
+            1
+            for c in calls
+            if float(c.get("duration") or c.get("durationSeconds") or 0)
+            >= CONVERSATION_DURATION_SECONDS
+        )
+    else:
+        # Fallback: person-level aggregates (cumulative since lead creation)
+        call_volume = sum(int(p.get("callsOutgoing") or 0) for p in zillow_people)
+        conversations_2min = sum(
+            1 for p in zillow_people if _last_call_duration(p) >= CONVERSATION_DURATION_SECONDS
+        )
+
+    # ── Appointment metrics: dedicated /appointments endpoint preferred ───────
+    appointment_count = len(appointments) if appointments is not None else appt_from_stage
 
     activity_points = (
         appointment_count * POINTS["appointments_set"]
@@ -424,7 +580,14 @@ def pull_daily_metrics(today: date | None = None) -> list[dict]:
         try:
             people = fetch_people_for_agent(agent_id, window_start)
             zillow_people = [p for p in people if is_zillow_preferred(p)]
-            metrics = calculate_agent_metrics(zillow_people)
+            # Fetch dedicated endpoint data; soft-fail returns [] if unavailable
+            calls = fetch_calls_for_agent(agent_id, window_start)
+            appointments = fetch_appointments_for_agent(agent_id, window_start)
+            metrics = calculate_agent_metrics(
+                zillow_people,
+                calls=calls or None,
+                appointments=appointments or None,
+            )
             results.append(
                 {
                     "agent_id": agent_id,

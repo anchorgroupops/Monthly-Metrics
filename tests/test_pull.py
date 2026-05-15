@@ -56,7 +56,7 @@ def test_save_period_with_run_id_updates_existing(isolated_db):
             "name": "A",
             "email": "a@x.com",
             "period": "2026-04",
-            "pCVR": 0.05,
+            "speed_to_action": 240.0,
         }
     ]
     storage.save_period(agents, source="fub", run_id=run_id)
@@ -81,7 +81,7 @@ def test_save_period_without_run_id_inserts_new(isolated_db):
             "name": "A",
             "email": "a@x.com",
             "period": "2026-04",
-            "pCVR": 0.05,
+            "speed_to_action": 240.0,
         }
     ]
     storage.save_period(agents, source="csv")
@@ -105,11 +105,12 @@ def fake_fub_agents():
             "period": "April 2026",
             "start_date": "2026-04-01",
             "end_date": "2026-04-30",
-            "pCVR": 0.038,
-            "pickup_rate": 0.91,
-            "csat": 4.7,
-            "zhl_transfers": 5,
-            "_raw": {},
+            "speed_to_action": 210.0,
+            "work_with_rate": 0.55,
+            "csat": 0.91,
+            "appt_set_rate": 0.65,
+            "appt_met_rate": 0.78,
+
         },
         {
             "agent_id": "200",
@@ -118,11 +119,12 @@ def fake_fub_agents():
             "period": "April 2026",
             "start_date": "2026-04-01",
             "end_date": "2026-04-30",
-            "pCVR": 0.021,
-            "pickup_rate": 0.74,
-            "csat": 4.1,
-            "zhl_transfers": 2,
-            "_raw": {},
+            "speed_to_action": 480.0,
+            "work_with_rate": 0.42,
+            "csat": 0.78,
+            "appt_set_rate": 0.52,
+            "appt_met_rate": 0.58,
+
         },
     ]
 
