@@ -1,11 +1,10 @@
 """Tests for the FUB daily metrics calculator."""
+
 from __future__ import annotations
 
 import sqlite3
 import tempfile
-from datetime import datetime, timedelta, timezone
-
-import pytest
+from datetime import UTC, datetime, timedelta
 
 from src.fub_daily_metrics import (
     TARGETS,
@@ -15,7 +14,6 @@ from src.fub_daily_metrics import (
     is_zillow_lead,
     save_daily_snapshot,
 )
-
 
 # ── Fixtures ─────────────────────────────────────────────────────
 
@@ -32,7 +30,7 @@ def _make_lead(
     emails_sent=1,
 ):
     """Create a mock FUB lead dict."""
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     created = now - timedelta(hours=created_offset_hours)
     first_contact = now - timedelta(hours=first_contact_offset_hours)
 
@@ -90,10 +88,11 @@ def test_response_time_from_call():
 
 
 def test_response_time_no_contact():
-    lead = _make_lead(calls_out=0, texts_sent=0, emails_sent=0)
+    lead = _make_lead(contacted=0, calls_out=0, texts_sent=0, emails_sent=0)
     lead["lastOutgoingCall"] = None
     lead["lastSentText"] = None
     lead["lastSentEmail"] = None
+    lead["lastCommunication"] = None
     assert calc_response_time(lead) is None
 
 

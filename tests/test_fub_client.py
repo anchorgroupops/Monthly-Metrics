@@ -315,10 +315,14 @@ class TestFetchUsers:
                 "_metadata": {"total": 4, "next": None},
                 "users": [
                     {"id": 1, "name": "Alice", "email": "a@x.com", "role": "Agent"},
-                    {"id": 2, "name": "Bob", "email": "b@x.com", "role": "Agent",
-                     "deleted": True},
-                    {"id": 3, "name": "Carol", "email": "c@x.com", "role": "Agent",
-                     "status": "inactive"},
+                    {"id": 2, "name": "Bob", "email": "b@x.com", "role": "Agent", "deleted": True},
+                    {
+                        "id": 3,
+                        "name": "Carol",
+                        "email": "c@x.com",
+                        "role": "Agent",
+                        "status": "inactive",
+                    },
                     {"id": 4, "name": "", "email": "d@x.com", "role": "Agent"},
                 ],
             },
@@ -382,9 +386,7 @@ class TestFetchAllAgents:
         monkeypatch.setattr(fub_client, "FUB_API_KEY", "test-key")
         monkeypatch.setattr(fub_client, "AGENTS", [])
 
-        mock_fetch_users = mocker.patch.object(
-            fub_client, "fetch_users", return_value=[]
-        )
+        mock_fetch_users = mocker.patch.object(fub_client, "fetch_users", return_value=[])
 
         result = fub_client.fetch_all_agents()
         mock_fetch_users.assert_called_once()

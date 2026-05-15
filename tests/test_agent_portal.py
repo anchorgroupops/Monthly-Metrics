@@ -6,7 +6,6 @@ import json
 
 import pytest
 
-
 # ── Fixtures ──────────────────────────────────────────────────────────────────
 
 
@@ -174,9 +173,7 @@ class TestVerify:
         assert r.status_code == 200
         assert b"invalid or has expired" in r.data
 
-    def test_valid_token_sets_session_cookie_and_redirects(
-        self, client, alice, mocker
-    ):
+    def test_valid_token_sets_session_cookie_and_redirects(self, client, alice, mocker):
         token = _issue_token_for(client, mocker, "alice@example.com")
         r = client.get(f"/metrics/verify?token={token}")
         assert r.status_code == 302
@@ -220,9 +217,7 @@ class TestDashboard:
         # Trend payload is JSON-encoded inside a data island.
         assert b'id="trend-data"' in r.data
 
-    def test_empty_state_when_agent_has_no_periods(
-        self, portal_app, isolated_db, mocker
-    ):
+    def test_empty_state_when_agent_has_no_periods(self, portal_app, isolated_db, mocker):
         # Insert agent_meta directly, no agent_periods rows.
         from src import storage
 
