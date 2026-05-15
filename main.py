@@ -41,18 +41,18 @@ def setup_logging(verbose: bool = False) -> None:
     )
 
 
-# ── Mode: research ────────────────────────────────────────────────────────────
+# -- Mode: research ------------------------------------------------------------
 
 
 def cmd_research(args) -> int:
     from src.threshold_researcher import run_research
 
-    print("\n── Researching Zillow Preferred KPIs… ──")
+    print("\n-- Researching Zillow Preferred KPIs… --")
     run_research()
     return 0
 
 
-# ── Mode: pull ────────────────────────────────────────────────────────────────
+# -- Mode: pull ----------------------------------------------------------------
 
 
 def cmd_pull(args) -> int:
@@ -65,7 +65,7 @@ def cmd_pull(args) -> int:
     from src.fub_client import fetch_all_agents
     from src.storage import finish_run, save_period, start_run
 
-    print("\n── Pull Mode ────────────────────────────────────────────────────────")
+    print("\n-- Pull Mode --------------------------------------------------------")
 
     if not FUB_API_KEY:
         print(
@@ -115,7 +115,7 @@ def cmd_pull(args) -> int:
         return 1
 
 
-# ── Mode: upload ──────────────────────────────────────────────────────────────
+# -- Mode: upload --------------------------------------------------------------
 
 
 def cmd_upload(args) -> int:
@@ -127,7 +127,7 @@ def cmd_upload(args) -> int:
         print("    python main.py --mode upload data/april_2026.csv")
         return 1
 
-    print("\n── Upload Mode ──────────────────────────────────────────────────────")
+    print("\n-- Upload Mode ------------------------------------------------------")
     print(f"  File: {args.file}")
 
     try:
@@ -145,14 +145,14 @@ def cmd_upload(args) -> int:
     return 0
 
 
-# ── Mode: review ──────────────────────────────────────────────────────────────
+# -- Mode: review --------------------------------------------------------------
 
 
 def cmd_review(args) -> int:
     from src.metrics import score_all_agents
     from src.review_mode import run_review
 
-    print("\n── Review Mode ──────────────────────────────────────────────────────")
+    print("\n-- Review Mode ------------------------------------------------------")
     agents_data = _load_source_agents(args)
     if not agents_data:
         return 1
@@ -170,7 +170,7 @@ def cmd_review(args) -> int:
     return 0
 
 
-# ── Mode: draft ───────────────────────────────────────────────────────────────
+# -- Mode: draft ---------------------------------------------------------------
 
 
 def cmd_draft(args) -> int:
@@ -179,7 +179,7 @@ def cmd_draft(args) -> int:
     from src.metrics import score_all_agents
     from src.storage import queue_draft
 
-    print("\n── Draft Mode ───────────────────────────────────────────────────────")
+    print("\n-- Draft Mode -------------------------------------------------------")
     agents_data = _load_source_agents(args)
     if not agents_data:
         return 1
@@ -202,13 +202,13 @@ def cmd_draft(args) -> int:
     return 0
 
 
-# ── Mode: dashboard ───────────────────────────────────────────────────────────
+# -- Mode: dashboard -----------------------------------------------------------
 
 
 def cmd_dashboard(args) -> int:
     from src.dashboard import create_app
 
-    print("\n── Dashboard ────────────────────────────────────────────────────────")
+    print("\n-- Dashboard --------------------------------------------------------")
     print("  Starting Flask on http://127.0.0.1:5050")
     print("  Set ADMIN_PASSWORD env var to enable login (default: 'anchor').\n")
     app = create_app()
@@ -216,14 +216,14 @@ def cmd_dashboard(args) -> int:
     return 0
 
 
-# ── Mode: send ────────────────────────────────────────────────────────────────
+# -- Mode: send ----------------------------------------------------------------
 
 
 def cmd_send(args) -> int:
     """Send only drafts in the approval queue with status='approved'."""
     from src.storage import get_draft, list_drafts, mark_sent
 
-    print("\n── Send Mode ────────────────────────────────────────────────────────")
+    print("\n-- Send Mode --------------------------------------------------------")
     approved = list_drafts(status="approved")
     if not approved:
         print("  No approved drafts in queue. Approve some via the dashboard first.")
@@ -271,14 +271,66 @@ def cmd_send(args) -> int:
     return 0
 
 
-# ── Mode: single agent shortcut ───────────────────────────────────────────────
+# -- Mode: single agent shortcut -----------------------------------------------
 
 
 def cmd_agent(args) -> int:
     return cmd_review(args)
 
+    # -- Mode: migrate -------------------------------------------------------------
 
-# ── Mode: migrate ─────────────────────────────────────────────────────────────
+    """Pull daily FUB metrics and store snapshot."""
+    from src.fub_daily_metrics import calc_team_averages, fetch_daily_metrics, save_daily_snapshot
+
+    logger = logging.getLogger(__name__)
+    logger.info("Fetching daily FUB metrics...")
+    results = fetch_daily_metrics(days=30)
+    save_daily_snapshot(results)
+    team = calc_team_averages(results)
+
+    agents_with_data = [r for r in results if r["metrics"]["total_zillow_leads"] > 0]
+    sep = "-" * 50
+    print(f"\n-- Daily Metrics {sep}")
+    print(f"  {len(results)} agents checked, {len(agents_with_data)} have Zillow leads")
+    if team.get("response_time_avg") is not None:
+        print(f"  Team avg response time: {team['response_time_avg']}s")
+    if team.get("contact_rate") is not None:
+        print(f"  Team avg contact rate: {team['contact_rate'] * 100:.1f}%")
+    print("  Snapshot saved to SQLite.\n")
+    return 0
+
+
+def cmd_daily(args) -> int:
+    """Pull daily FUB metrics and store snapshot."""
+    import logging
+
+    from src.fub_daily_metrics import (
+        calc_team_averages,
+        fetch_daily_metrics,
+        save_daily_snapshot,
+    )
+
+    logger = logging.getLogger(__name__)
+    logger.info("Fetching daily FUB metrics...")
+    results = fetch_daily_metrics(days=30)
+    save_daily_snapshot(results)
+    team = calc_team_averages(results)
+
+    agents_with_data = [r for r in results if r["metrics"]["total_zillow_leads"] > 0]
+    sep = "-" * 50
+    print(f"\n-- Daily Metrics {sep}")
+    print(f"  {len(results)} agents checked, {len(agents_with_data)} have Zillow leads")
+    rt = team.get("response_time_avg")
+    if rt is not None:
+        print(f"  Team avg response time: {rt}s ({rt / 60:.1f}m)")
+    cr = team.get("contact_rate")
+    if cr is not None:
+        print(f"  Team avg contact rate: {cr * 100:.1f}%")
+    ar = team.get("appointment_rate")
+    if ar is not None:
+        print(f"  Team avg appointment rate: {ar * 100:.1f}%")
+    print("  Snapshot saved to SQLite.\n")
+    return 0
 
 
 def cmd_migrate(args) -> int:
@@ -286,7 +338,7 @@ def cmd_migrate(args) -> int:
     from src.migrations._runner import apply_pending_migrations
     from src.storage import DB_PATH
 
-    print("\n── Migrate ──────────────────────────────────────────────────────────")
+    print("\n-- Migrate ----------------------------------------------------------")
     print(f"  DB: {DB_PATH}")
     applied = apply_pending_migrations(DB_PATH)
     if applied:
@@ -298,7 +350,7 @@ def cmd_migrate(args) -> int:
     return 0
 
 
-# ── Helpers ───────────────────────────────────────────────────────────────────
+# -- Helpers -------------------------------------------------------------------
 
 
 def _load_source_agents(args) -> list[dict]:
@@ -366,7 +418,7 @@ def _filter_agent(scored: list[dict], name: str) -> list[dict]:
     return matched
 
 
-# ── Entry point ───────────────────────────────────────────────────────────────
+# -- Entry point ---------------------------------------------------------------
 
 
 def main() -> int:
@@ -377,7 +429,17 @@ def main() -> int:
     )
     parser.add_argument(
         "--mode",
-        choices=["research", "pull", "upload", "review", "draft", "dashboard", "send", "migrate"],
+        choices=[
+            "research",
+            "pull",
+            "upload",
+            "review",
+            "draft",
+            "dashboard",
+            "send",
+            "migrate",
+            "daily",
+        ],
         help="Execution mode",
     )
     parser.add_argument(
@@ -443,6 +505,8 @@ def main() -> int:
         return cmd_send(args)
     if args.mode == "migrate":
         return cmd_migrate(args)
+    if args.mode == "daily":
+        return cmd_daily(args)
 
     parser.print_help()
     return 0
