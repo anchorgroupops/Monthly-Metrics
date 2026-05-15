@@ -7,14 +7,12 @@
     <h1 class="text-2xl font-bold brand-primary-text">Review · {{ period_label }}</h1>
     <p class="text-sm text-slate-500">Approve or reject each agent's draft email before sending.</p>
   </div>
-  <form method="POST" action="{{ url_for('approve_all', period=period) }}">
-    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-    <button type="submit"
-            class="brand-secondary text-white font-semibold px-4 py-2 rounded-lg text-sm hover:opacity-90"
-            onclick="return confirm('Approve all pending drafts?');">
-      Approve all pending
-    </button>
-  </form>
+  {% if pending_count > 0 %}
+  <button type="button" onclick="openApproveAllModal()"
+          class="brand-secondary text-white font-semibold px-4 py-2 rounded-lg text-sm hover:opacity-90">
+    Approve all pending
+  </button>
+  {% endif %}
 </section>
 
 <div class="bg-white rounded-xl shadow overflow-hidden">
@@ -26,9 +24,8 @@
   </ul>
   {% else %}
   <div class="p-10 text-center text-slate-500">
-    No drafts queued for this period yet. Run
-    <code class="px-1 py-0.5 bg-slate-100 rounded">python main.py --mode draft</code>
-    to queue them.
+    No drafts queued for this period yet. Use <strong>Pull from FUB</strong> or
+    <strong>Upload month</strong> to generate agent data, then drafts will be queued automatically.
   </div>
   {% endif %}
 </div>
@@ -36,5 +33,44 @@
 <section class="mt-6 text-xs text-slate-400">
   ← <a href="{{ url_for('home') }}" class="hover:underline">Back to leaderboard</a>
 </section>
+
+{# ── Approve-all confirmation modal ─────────────────────────────────────── #}
+<div id="approve-all-modal"
+     class="fixed inset-0 z-50 hidden flex items-center justify-center bg-black/40 backdrop-blur-sm">
+  <div class="bg-white rounded-xl shadow-lg max-w-sm w-full mx-4 p-6">
+    <h2 class="text-lg font-bold mb-2" style="color: {{ brand.color_primary }};">Confirm approval</h2>
+    <p class="text-sm text-slate-600 mb-5">
+      You are about to approve <strong>{{ pending_count }}</strong>
+      pending draft email{{ '' if pending_count == 1 else 's' }}.
+      This will queue {{ 'it' if pending_count == 1 else 'them' }} for delivery.
+      Continue?
+    </p>
+    <div class="flex gap-3 justify-end">
+      <button type="button" onclick="closeApproveAllModal()"
+              class="px-4 py-2 rounded-lg text-sm border border-slate-300 hover:bg-slate-50">
+        Cancel
+      </button>
+      <form method="POST" action="{{ url_for('approve_all', period=period) }}" class="inline">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <button type="submit"
+                class="brand-secondary text-white font-semibold px-4 py-2 rounded-lg text-sm hover:opacity-90">
+          Approve {{ pending_count }}
+        </button>
+      </form>
+    </div>
+  </div>
+</div>
+
+<script>
+function openApproveAllModal() {
+  document.getElementById('approve-all-modal').classList.remove('hidden');
+}
+function closeApproveAllModal() {
+  document.getElementById('approve-all-modal').classList.add('hidden');
+}
+document.getElementById('approve-all-modal').addEventListener('click', function(e) {
+  if (e.target === this) closeApproveAllModal();
+});
+</script>
 
 {% endblock %}

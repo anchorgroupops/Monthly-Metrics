@@ -1,6 +1,14 @@
 <li id="draft-{{ d.id }}" class="p-4 flex flex-wrap items-center justify-between gap-3">
   <div class="flex-1 min-w-0">
-    <div class="font-medium">{{ d.name or d.agent_id }}</div>
+    <div class="flex items-center gap-2 flex-wrap">
+      <span class="font-medium">{{ d.name or d.agent_id }}</span>
+      {% if d.agent_status is defined %}
+      <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium text-white
+                   {{ d.agent_status | status_color }}">
+        {{ d.agent_status }}
+      </span>
+      {% endif %}
+    </div>
     <div class="text-xs text-slate-500 truncate">{{ d.email }}</div>
     <div class="mt-1">
       {% if d.status == 'pending' %}

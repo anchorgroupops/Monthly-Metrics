@@ -110,10 +110,10 @@ def create_app() -> Flask:
     )
     app.extensions["limiter"] = limiter
 
-    # Make BRAND available in every template.
+    # Make BRAND and anomaly ceilings available in every template.
     @app.context_processor
     def inject_brand():
-        return {"brand": BRAND}
+        return {"brand": BRAND, "anomaly_ceilings": ANOMALY_CEILINGS}
 
     @app.after_request
     def add_security_headers(response):
@@ -414,6 +414,36 @@ def _check_password(provided: str) -> bool:
     return secrets.compare_digest(provided or "", expected)
 
 
+# ── Formatting helpers ────────────────────────────────────────────────────────
+
+# Per-metric anomaly ceilings (values above these are flagged as suspicious).
+# Rates in natural units (0.0–1.0), so 1.0 = 100%.
+ANOMALY_CEILINGS: dict[str, float] = {
+    "work_with_rate": 1.0,
+    "appt_set_rate": 2.0,
+    "appt_met_rate": 1.0,
+    "csat": 1.0,
+}
+
+
+def _format_seconds(v: float) -> str:
+    """Human-readable duration: Xs / Nm Ss / Xh Ym / Xd Yh."""
+    total_sec = int(round(v))
+    if total_sec < 60:
+        return f"{total_sec}s"
+    total_mins = total_sec // 60
+    secs = total_sec % 60
+    if total_mins < 60:
+        return f"{total_mins}m {secs:02d}s" if secs else f"{total_mins}m"
+    hours = total_mins // 60
+    mins = total_mins % 60
+    if hours < 24:
+        return f"{hours}h {mins}m" if mins else f"{hours}h"
+    days = hours // 24
+    rem_hours = hours % 24
+    return f"{days}d {rem_hours}h" if rem_hours else f"{days}d"
+
+
 # ── Routes ────────────────────────────────────────────────────────────────────
 
 
@@ -503,6 +533,7 @@ def _register_routes(app: Flask, limiter: Limiter) -> None:
             a["agent_id"]: rolling_trend(a["agent_id"], hero_key, 3) if hero_key else None
             for a in scored
         }
+        has_trends = any(t and t.get("sparkline") for t in trends.values())
 
         # Pending draft count for "Review & Send" CTA
         pending = len(storage.list_drafts(period=latest, status="pending"))
@@ -518,6 +549,7 @@ def _register_routes(app: Flask, limiter: Limiter) -> None:
             metric_keys=keys,
             hero_key=hero_key,
             trends=trends,
+            has_trends=has_trends,
             pending=pending,
             approved=approved,
         )
@@ -658,11 +690,30 @@ def _register_routes(app: Flask, limiter: Limiter) -> None:
     def review(period: str):
         canonical = storage.normalize_period(period)
         drafts = storage.list_drafts(period=canonical)
+
+        # Annotate each draft with the agent's performance status for display/sort.
+        agents_data = storage.load_period(canonical)
+        if agents_data:
+            scored = score_all_agents(agents_data)
+            agent_status_map = {a["agent_id"]: a["overall_status"] for a in scored}
+        else:
+            agent_status_map = {}
+
+        _status_order = {"At Risk": 0, "Needs Improvement": 1, "Preferred": 2, "No Data": 3}
+        for d in drafts:
+            d["agent_status"] = agent_status_map.get(d["agent_id"], "No Data")
+
+        # Sort: highest-risk agents first, then by name within each status group.
+        drafts.sort(key=lambda d: (_status_order.get(d["agent_status"], 3), d.get("name") or ""))
+
+        pending_count = sum(1 for d in drafts if d["status"] == "pending")
+
         return render_template(
             "admin/review.html",
             period=canonical,
             period_label=storage.period_label(canonical),
             drafts=drafts,
+            pending_count=pending_count,
         )
 
     @app.route("/draft/<int:draft_id>")
@@ -753,10 +804,7 @@ def _register_routes(app: Flask, limiter: Limiter) -> None:
         if unit == "percent":
             return f"{v * 100:.1f}%"
         if unit == "seconds":
-            if v < 60:
-                return f"{int(round(v))}s"
-            mins, secs = divmod(int(round(v)), 60)
-            return f"{mins}m {secs:02d}s" if secs else f"{mins}m"
+            return _format_seconds(v)
         if unit == "score":
             return f"{v:.1f}"
         if unit == "count":
