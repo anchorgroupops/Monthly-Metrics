@@ -109,7 +109,7 @@ class TestDailyData:
         resp = auth_client.get("/daily/data")
         assert resp.status_code == 200
         body = resp.data.decode()
-        assert "No daily snapshots" in body or "No FUB pull recorded" in body
+        assert "No daily snapshot" in body or "No FUB pull recorded" in body
 
     def test_renders_agents_when_snapshots_exist(self, auth_client, seeded_daily):
         resp = auth_client.get("/daily/data")

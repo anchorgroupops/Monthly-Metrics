@@ -4,8 +4,23 @@
   {%- if value is none -%}—
   {%- elif unit == 'percent' -%}{{ '%.0f'|format(value * 100) }}%
   {%- elif unit == 'seconds' -%}
-    {%- if value < 60 -%}{{ value|round|int }}s
-    {%- else -%}{{ (value // 60)|int }}m {{ (value % 60)|round|int }}s
+    {%- set total_sec = value|round|int -%}
+    {%- if total_sec < 60 -%}{{ total_sec }}s
+    {%- else -%}
+      {%- set total_mins = (total_sec // 60)|int -%}
+      {%- set secs = (total_sec % 60)|int -%}
+      {%- if total_mins < 60 -%}
+        {{ total_mins }}m{% if secs %} {{ '%02d'|format(secs) }}s{% endif %}
+      {%- elif total_mins < 1440 -%}
+        {%- set hours = (total_mins // 60)|int -%}
+        {%- set mins = (total_mins % 60)|int -%}
+        {{ hours }}h{% if mins %} {{ mins }}m{% endif %}
+      {%- else -%}
+        {%- set hours = (total_mins // 60)|int -%}
+        {%- set days = (hours // 24)|int -%}
+        {%- set rem_h = (hours % 24)|int -%}
+        {{ days }}d{% if rem_h %} {{ rem_h }}h{% endif %}
+      {%- endif -%}
     {%- endif -%}
   {%- else -%}{{ '%.2f'|format(value) }}
   {%- endif -%}
@@ -59,10 +74,8 @@
 {# ── Empty state ────────────────────────────────────────────────────────── #}
 {% if not rows %}
   <div class="bg-white rounded-xl shadow px-6 py-12 text-center">
-    <p class="text-slate-500 text-sm">
-      No daily snapshots in the database yet. Run <code class="px-1 py-0.5 rounded bg-slate-100">python main.py --mode daily</code>
-      or click <strong>Refresh now</strong> above.
-    </p>
+    <p class="text-slate-500 text-sm mb-2">No daily snapshot yet for today.</p>
+    <p class="text-slate-400 text-sm">Click <strong>Refresh now</strong> above to pull the latest data from FUB.</p>
   </div>
 {% else %}
 

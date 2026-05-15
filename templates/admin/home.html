@@ -2,18 +2,92 @@
 {% block title %}{{ period_label }} · Anchor Metrics{% endblock %}
 {% block content %}
 
+{# ── Row rendering macro — must be defined before the table ───────────── #}
+{% macro agent_row(agent, row_idx, is_nodata) %}
+<tr class="{% if is_nodata %}nodata-row hidden{% endif %} hover:bg-slate-50/50"
+    data-row="{{ row_idx }}">
+  <td class="px-4 {% if is_nodata %}py-2{% else %}py-3{% endif %}" data-sort="{{ agent.name }}">
+    <div class="font-medium {% if is_nodata %}text-slate-400{% endif %}">{{ agent.name }}</div>
+    <div class="text-xs text-slate-400">{{ agent.email }}</div>
+  </td>
+  <td class="px-4 py-3" data-sort="{{ {'Preferred': 0, 'At Risk': 1, 'Needs Improvement': 2, 'No Data': 3}[agent.overall_status] }}">
+    <span class="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-xs font-medium text-white
+                 {{ agent.overall_status | status_color }}">
+      {{ agent.overall_status }}
+    </span>
+  </td>
+  <td class="px-4 py-3 font-semibold {% if is_nodata %}text-slate-400{% endif %}"
+      data-sort="{{ agent.operational_readiness if agent.operational_readiness is not none else -1 }}">
+    {% if agent.operational_readiness is not none %}
+      {{ agent.operational_readiness }}
+    {% else %}
+      <span class="text-slate-300">—</span>
+    {% endif %}
+  </td>
+  {% for key in metric_keys %}
+  {% set m = agent.metrics[key] %}
+  {% set is_seconds = thresholds.metrics[key].unit == 'seconds' %}
+  {% set is_pct = thresholds.metrics[key].unit == 'percent' %}
+  {% set ceiling = anomaly_ceilings.get(key, 2.0) %}
+  {% set anomalous = is_pct and m.value is not none and m.value > ceiling %}
+  {% set overdue = is_seconds and m.value is not none and m.value > 86400 %}
+  <td class="px-4 py-3 {% if overdue %}bg-rose-50{% endif %}"
+      data-sort="{{ m.value if m.value is not none else -1 }}">
+    {% if overdue %}
+      <span class="inline-flex items-center gap-1 font-mono text-rose-700 font-semibold"
+            title="Over 24 hours — critically overdue">
+        ⚠ {{ m | metric_value }}
+      </span>
+    {% elif anomalous %}
+      <span class="inline-flex items-center gap-1 font-mono">
+        {{ m | metric_value }}
+        <span class="inline-block px-1.5 py-0.5 rounded text-xs font-semibold bg-amber-100 text-amber-800 cursor-help"
+              title="Value exceeds expected range — data may be incorrect">!</span>
+      </span>
+    {% else %}
+      <span class="font-mono {% if is_nodata %}text-slate-400{% endif %}">{{ m | metric_value }}</span>
+      {% if not is_nodata %}
+        {% if m.status == 'green' %}<span class="ml-1 text-emerald-500">●</span>
+        {% elif m.status == 'yellow' %}<span class="ml-1 text-amber-500">●</span>
+        {% elif m.status == 'red' %}<span class="ml-1 text-rose-500">●</span>
+        {% endif %}
+      {% endif %}
+    {% endif %}
+  </td>
+  {% endfor %}
+  {% if has_trends and hero_key %}
+  {% set t = trends[agent.agent_id] %}
+  <td class="px-4 py-3 text-slate-500"
+      data-sort="{{ t.delta_pct if t and t.delta_pct is not none else -999 }}">
+    {% if t and t.sparkline %}
+      {{ t.sparkline|safe }}
+      {% if t.delta_pct is not none %}
+      <div class="text-xs">
+        {{ '+' if t.delta_pct >= 0 else '' }}{{ t.delta_pct }}%
+      </div>
+      {% endif %}
+    {% else %}
+      <span class="text-slate-300 text-xs">no history</span>
+    {% endif %}
+  </td>
+  {% endif %}
+</tr>
+{% endmacro %}
+
+{# ── Separate active vs no-data agents ────────────────────────────────── #}
+{% set active_agents = agents | rejectattr('overall_status', 'equalto', 'No Data') | list %}
+{% set nodata_agents = agents | selectattr('overall_status', 'equalto', 'No Data') | list %}
+
 <section class="mb-6 flex flex-wrap items-center justify-between gap-3">
   <div>
     <h1 class="text-2xl font-bold brand-primary-text">{{ period_label }}</h1>
-    <p class="text-sm text-slate-500">Leaderboard sorted by Operational Readiness · {{ agents|length }} agent{{ '' if agents|length == 1 else 's' }}</p>
+    <p class="text-sm text-slate-500">
+      Leaderboard sorted by Operational Readiness ·
+      {{ active_agents|length }} active{% if nodata_agents %}, {{ nodata_agents|length }} no data{% endif %}
+    </p>
   </div>
   <div class="flex flex-wrap gap-2">
-    {% if pending or approved %}
-    <a href="{{ url_for('review', period=period) }}"
-       class="bg-amber-500 text-white font-medium px-4 py-2 rounded-lg text-sm hover:opacity-90">
-      Review drafts ({{ pending }} pending, {{ approved }} approved)
-    </a>
-    {% endif %}
+    {# Primary CTA #}
     <form method="POST" action="{{ url_for('pull_now') }}" class="inline">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
       <button type="submit"
@@ -21,6 +95,19 @@
         Pull from FUB
       </button>
     </form>
+    {# Secondary CTA — outlined with pending badge #}
+    {% if pending or approved %}
+    <a href="{{ url_for('review', period=period) }}"
+       class="inline-flex items-center gap-2 border-2 font-medium px-4 py-2 rounded-lg text-sm
+              bg-white hover:bg-slate-50 transition-colors"
+       style="border-color: {{ brand.color_primary }}; color: {{ brand.color_primary }};">
+      Review drafts
+      {% if pending %}
+      <span class="inline-flex items-center justify-center min-w-[1.25rem] h-5 px-1.5 rounded-full
+                   bg-amber-500 text-white text-xs font-bold leading-none">{{ pending }}</span>
+      {% endif %}
+    </a>
+    {% endif %}
     <a href="{{ url_for('upload') }}"
        class="bg-white border border-slate-300 px-4 py-2 rounded-lg text-sm hover:bg-slate-50">
       + Upload month
@@ -29,8 +116,6 @@
 </section>
 
 <section class="mb-6">
-  {# Self-loading status card. First render is empty; HTMX swaps in /pull-status
-     immediately, and that partial keeps polling itself. #}
   <div hx-get="{{ url_for('pull_status') }}"
        hx-trigger="load"
        hx-swap="outerHTML"></div>
@@ -48,74 +133,55 @@
 {% endif %}
 
 <div class="bg-white rounded-xl shadow overflow-hidden">
-  <div class="overflow-x-auto">
-    <table class="w-full text-sm">
+  <div class="overflow-x-auto w-full">
+    <table id="leaderboard" class="w-full text-sm min-w-max">
       <thead class="bg-slate-50 text-slate-600 text-xs uppercase tracking-wider">
         <tr>
-          <th class="px-4 py-3 text-left">Agent</th>
-          <th class="px-4 py-3 text-left">Status</th>
-          <th class="px-4 py-3 text-left">Op. Readiness</th>
+          <th class="px-4 py-3 text-left cursor-pointer select-none hover:bg-slate-100"
+              onclick="sortTable(0)" data-col="0">
+            Agent <span class="sort-icon text-slate-400">↕</span>
+          </th>
+          <th class="px-4 py-3 text-left cursor-pointer select-none hover:bg-slate-100"
+              onclick="sortTable(1)" data-col="1">
+            Status <span class="sort-icon text-slate-400">↕</span>
+          </th>
+          <th class="px-4 py-3 text-left cursor-pointer select-none hover:bg-slate-100"
+              onclick="sortTable(2)" data-col="2">
+            Op. Readiness <span class="sort-icon text-slate-400">↕</span>
+          </th>
           {% for key in metric_keys %}
-          {% set m = thresholds.metrics[key] %}
-          <th class="px-4 py-3 text-left">{{ m.label }}</th>
+          <th class="px-4 py-3 text-left cursor-pointer select-none hover:bg-slate-100"
+              onclick="sortTable({{ loop.index0 + 3 }})" data-col="{{ loop.index0 + 3 }}">
+            {{ thresholds.metrics[key].label }} <span class="sort-icon text-slate-400">↕</span>
+          </th>
           {% endfor %}
-          {% if hero_key %}
-          <th class="px-4 py-3 text-left">90-day {{ thresholds.metrics[hero_key].label }}</th>
+          {% if has_trends and hero_key %}
+          <th class="px-4 py-3 text-left text-slate-500">
+            90-day {{ thresholds.metrics[hero_key].label }}
+          </th>
           {% endif %}
         </tr>
       </thead>
-      <tbody class="divide-y divide-slate-100">
-        {% for agent in agents %}
-        <tr>
-          <td class="px-4 py-3">
-            <div class="font-medium">{{ agent.name }}</div>
-            <div class="text-xs text-slate-500">{{ agent.email }}</div>
-          </td>
-          <td class="px-4 py-3">
-            <span class="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-xs font-medium text-white {{ agent.overall_status|status_color }}">
-              {{ agent.overall_status }}
-            </span>
-          </td>
-          <td class="px-4 py-3 font-semibold">
-            {% if agent.operational_readiness is not none %}
-              {{ agent.operational_readiness }}
-            {% else %}
-              <span class="text-slate-400">—</span>
-            {% endif %}
-          </td>
-          {% for key in metric_keys %}
-          {% set m = agent.metrics[key] %}
-          <td class="px-4 py-3">
-            <span class="font-mono">{{ m | metric_value }}</span>
-            {% if m.status == 'green' %}
-              <span class="ml-1 text-emerald-500">●</span>
-            {% elif m.status == 'yellow' %}
-              <span class="ml-1 text-amber-500">●</span>
-            {% elif m.status == 'red' %}
-              <span class="ml-1 text-rose-500">●</span>
-            {% endif %}
-          </td>
-          {% endfor %}
-          {% if hero_key %}
-          {% set t = trends[agent.agent_id] %}
-          <td class="px-4 py-3 text-slate-500">
-            {% if t and t.sparkline %}
-              {{ t.sparkline|safe }}
-              {% if t.delta_pct is not none %}
-              <div class="text-xs">
-                {{ '+' if t.delta_pct >= 0 else '' }}{{ t.delta_pct }}%
-              </div>
-              {% endif %}
-            {% else %}
-              <span class="text-slate-300">no history</span>
-            {% endif %}
-          </td>
-          {% endif %}
-        </tr>
+      <tbody class="divide-y divide-slate-100" id="leaderboard-body">
+        {% for agent in active_agents %}
+        {{ agent_row(agent, loop.index0, false) }}
+        {% endfor %}
+        {% for agent in nodata_agents %}
+        {{ agent_row(agent, active_agents|length + loop.index0, true) }}
         {% endfor %}
       </tbody>
     </table>
   </div>
+
+  {% if nodata_agents %}
+  <div class="px-4 py-3 border-t border-slate-100">
+    <button id="nodata-toggle"
+            onclick="toggleNoData()"
+            class="text-xs text-slate-400 hover:text-slate-600 underline underline-offset-2">
+      Show {{ nodata_agents|length }} agent{{ '' if nodata_agents|length == 1 else 's' }} with no data ▾
+    </button>
+  </div>
+  {% endif %}
 </div>
 
 <section class="mt-8 text-xs text-slate-400">
@@ -129,5 +195,59 @@
     {%- if not loop.last %} · {% endif %}
   {% endfor %}
 </section>
+
+<script>
+// ── No-data toggle ────────────────────────────────────────────────────────
+function toggleNoData() {
+  const rows = document.querySelectorAll('.nodata-row');
+  const btn = document.getElementById('nodata-toggle');
+  const isHidden = rows.length > 0 && rows[0].classList.contains('hidden');
+  rows.forEach(r => r.classList.toggle('hidden', !isHidden));
+  const count = rows.length;
+  const noun = count === 1 ? 'agent' : 'agents';
+  btn.textContent = isHidden
+    ? `Hide ${count} ${noun} with no data ▴`
+    : `Show ${count} ${noun} with no data ▾`;
+}
+
+// ── Sortable columns ──────────────────────────────────────────────────────
+let _sortCol = -1;
+let _sortAsc = true;
+
+function sortTable(col) {
+  const tbody = document.getElementById('leaderboard-body');
+  const rows = Array.from(tbody.querySelectorAll('tr'));
+
+  if (_sortCol === col) {
+    _sortAsc = !_sortAsc;
+  } else {
+    _sortCol = col;
+    _sortAsc = true;
+  }
+
+  rows.sort((a, b) => {
+    const aCell = a.querySelectorAll('td')[col];
+    const bCell = b.querySelectorAll('td')[col];
+    const aRaw = (aCell && aCell.dataset.sort !== undefined) ? aCell.dataset.sort : (aCell ? aCell.textContent.trim() : '');
+    const bRaw = (bCell && bCell.dataset.sort !== undefined) ? bCell.dataset.sort : (bCell ? bCell.textContent.trim() : '');
+    const aNum = parseFloat(aRaw);
+    const bNum = parseFloat(bRaw);
+    const numeric = !isNaN(aNum) && !isNaN(bNum);
+    const cmp = numeric ? aNum - bNum : aRaw.localeCompare(bRaw);
+    return _sortAsc ? cmp : -cmp;
+  });
+
+  rows.forEach(r => tbody.appendChild(r));
+
+  document.querySelectorAll('#leaderboard th .sort-icon').forEach((icon, i) => {
+    icon.textContent = i === col ? (_sortAsc ? '↑' : '↓') : '↕';
+  });
+  document.querySelectorAll('#leaderboard th').forEach((th, i) => {
+    th.classList.toggle('bg-slate-100', i === col);
+    th.classList.remove('bg-slate-50');
+    if (i !== col) th.classList.add('bg-slate-50');
+  });
+}
+</script>
 
 {% endblock %}
