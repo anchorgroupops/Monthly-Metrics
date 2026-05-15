@@ -5,6 +5,8 @@ Anchor Group Monthly Metrics — CLI Entry Point
 Usage:
   python main.py --mode research                       # Refresh KPIs + thresholds
   python main.py --mode pull                           # Fetch FUB metrics → SQLite
+  python main.py --mode daily                          # Daily MTD activity snapshot → SQLite
+  python main.py --mode daily --mock                   # Same, with synthetic data
   python main.py --mode upload <file.csv|file.json>    # Ingest admin upload
   python main.py --mode review                         # Generate output locally
   python main.py --mode review --mock                  # Review with mock data
@@ -115,7 +117,59 @@ def cmd_pull(args) -> int:
         return 1
 
 
-# -- Mode: upload --------------------------------------------------------------
+# ── Mode: daily ───────────────────────────────────────────────────────────────
+
+
+def cmd_daily(args) -> int:
+    """
+    Daily operational-activity pull. Hits /v1/people for each agent, computes
+    MTD metrics from raw lead activity, and upserts a snapshot row per agent
+    keyed on today's date. Idempotent: re-running on the same day overwrites.
+
+    Use --mock to populate the DB with synthetic data for local dashboard work.
+    """
+    from src.fub_daily_metrics import mock_daily_results, pull_daily_metrics, save_results
+
+    print("\n── Daily Mode ───────────────────────────────────────────────────────")
+
+    if args.mock:
+        print("  Source: mock data")
+        results = mock_daily_results()
+    else:
+        from config.settings import FUB_API_KEY
+
+        if not FUB_API_KEY:
+            print(
+                "  ERROR: FUB_API_KEY environment variable not set.\n"
+                "  Set it in /opt/Monthly-Metrics/.env (production) or your shell.\n"
+                "  Or use --mock for local testing without a live key."
+            )
+            return 1
+        print("  Source: live FUB API (/v1/people, MTD)")
+        try:
+            results = pull_daily_metrics()
+        except Exception as exc:
+            log = logging.getLogger(__name__)
+            log.exception("Daily pull failed")
+            print(f"  ERROR: {exc}")
+            return 1
+
+    if not results:
+        print("  No agents to process.")
+        return 0
+
+    saved = save_results(results)
+    errored = sum(1 for r in results if r.get("_error"))
+    print(f"  Saved daily snapshot for {saved} agent(s) ({errored} with errors).")
+    if errored:
+        for r in results:
+            if r.get("_error"):
+                print(f"    ! {r['name']}: {r['_error'][:120]}")
+    print("  View at: python main.py --mode dashboard  →  /daily\n")
+    return 0
+
+
+# ── Mode: upload ──────────────────────────────────────────────────────────────
 
 
 def cmd_upload(args) -> int:
@@ -277,61 +331,6 @@ def cmd_send(args) -> int:
 def cmd_agent(args) -> int:
     return cmd_review(args)
 
-    # -- Mode: migrate -------------------------------------------------------------
-
-    """Pull daily FUB metrics and store snapshot."""
-    from src.fub_daily_metrics import calc_team_averages, fetch_daily_metrics, save_daily_snapshot
-
-    logger = logging.getLogger(__name__)
-    logger.info("Fetching daily FUB metrics...")
-    results = fetch_daily_metrics(days=30)
-    save_daily_snapshot(results)
-    team = calc_team_averages(results)
-
-    agents_with_data = [r for r in results if r["metrics"]["total_zillow_leads"] > 0]
-    sep = "-" * 50
-    print(f"\n-- Daily Metrics {sep}")
-    print(f"  {len(results)} agents checked, {len(agents_with_data)} have Zillow leads")
-    if team.get("response_time_avg") is not None:
-        print(f"  Team avg response time: {team['response_time_avg']}s")
-    if team.get("contact_rate") is not None:
-        print(f"  Team avg contact rate: {team['contact_rate'] * 100:.1f}%")
-    print("  Snapshot saved to SQLite.\n")
-    return 0
-
-
-def cmd_daily(args) -> int:
-    """Pull daily FUB metrics and store snapshot."""
-    import logging
-
-    from src.fub_daily_metrics import (
-        calc_team_averages,
-        fetch_daily_metrics,
-        save_daily_snapshot,
-    )
-
-    logger = logging.getLogger(__name__)
-    logger.info("Fetching daily FUB metrics...")
-    results = fetch_daily_metrics(days=30)
-    save_daily_snapshot(results)
-    team = calc_team_averages(results)
-
-    agents_with_data = [r for r in results if r["metrics"]["total_zillow_leads"] > 0]
-    sep = "-" * 50
-    print(f"\n-- Daily Metrics {sep}")
-    print(f"  {len(results)} agents checked, {len(agents_with_data)} have Zillow leads")
-    rt = team.get("response_time_avg")
-    if rt is not None:
-        print(f"  Team avg response time: {rt}s ({rt / 60:.1f}m)")
-    cr = team.get("contact_rate")
-    if cr is not None:
-        print(f"  Team avg contact rate: {cr * 100:.1f}%")
-    ar = team.get("appointment_rate")
-    if ar is not None:
-        print(f"  Team avg appointment rate: {ar * 100:.1f}%")
-    print("  Snapshot saved to SQLite.\n")
-    return 0
-
 
 def cmd_migrate(args) -> int:
     """Run pending schema migrations against data/metrics.db."""
@@ -432,13 +431,13 @@ def main() -> int:
         choices=[
             "research",
             "pull",
+            "daily",
             "upload",
             "review",
             "draft",
             "dashboard",
             "send",
             "migrate",
-            "daily",
         ],
         help="Execution mode",
     )
@@ -493,6 +492,8 @@ def main() -> int:
         return cmd_research(args)
     if args.mode == "pull":
         return cmd_pull(args)
+    if args.mode == "daily":
+        return cmd_daily(args)
     if args.mode == "upload":
         return cmd_upload(args)
     if args.mode == "review":
@@ -505,8 +506,6 @@ def main() -> int:
         return cmd_send(args)
     if args.mode == "migrate":
         return cmd_migrate(args)
-    if args.mode == "daily":
-        return cmd_daily(args)
 
     parser.print_help()
     return 0

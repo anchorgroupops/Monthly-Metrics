@@ -455,6 +455,158 @@ def approve_all(period: str) -> int:
         return cur.rowcount
 
 
+# ── Daily snapshots (operational activity tracker) ───────────────────────────
+
+
+def save_daily_snapshot(
+    agent_id: str,
+    snapshot_date: str,
+    metrics: dict[str, float | int | None],
+    name: str | None = None,
+    email: str | None = None,
+) -> None:
+    """
+    Upsert one day's MTD activity metrics for an agent.
+
+    Each call replaces all metric rows for (agent_id, snapshot_date). Re-running
+    --mode daily multiple times in one day overwrites, which is the desired
+    behavior — each snapshot reflects "as of right now". snapshot_date must be
+    ISO YYYY-MM-DD. Non-numeric values are skipped silently. If name+email are
+    provided, agent_meta is upserted so the dashboard can render unknown agents
+    that have never appeared in a monthly upload.
+    """
+    if not snapshot_date or len(snapshot_date) != 10 or snapshot_date[4] != "-":
+        raise ValueError(f"snapshot_date must be ISO YYYY-MM-DD, got {snapshot_date!r}")
+
+    with connect() as conn:
+        if name and email:
+            conn.execute(
+                """
+                INSERT INTO agent_meta (agent_id, name, email, updated_at)
+                VALUES (?, ?, ?, datetime('now'))
+                ON CONFLICT(agent_id) DO UPDATE SET
+                    name = excluded.name,
+                    email = excluded.email,
+                    updated_at = excluded.updated_at
+                """,
+                (agent_id, name, email),
+            )
+
+        for key, value in metrics.items():
+            if not isinstance(value, (int, float, type(None))):
+                continue
+            conn.execute(
+                """
+                INSERT INTO agent_daily_snapshots
+                    (agent_id, snapshot_date, metric_key, value, captured_at)
+                VALUES (?, ?, ?, ?, datetime('now'))
+                ON CONFLICT(agent_id, snapshot_date, metric_key) DO UPDATE SET
+                    value = excluded.value,
+                    captured_at = excluded.captured_at
+                """,
+                (
+                    agent_id,
+                    snapshot_date,
+                    key,
+                    float(value) if value is not None else None,
+                ),
+            )
+
+
+def latest_daily_snapshot(agent_id: str) -> dict | None:
+    """
+    Return the most recent snapshot for an agent as
+    {"snapshot_date": "YYYY-MM-DD", "captured_at": str, "metrics": {key: value}}
+    or None if no snapshot exists.
+    """
+    with connect() as conn:
+        latest_date_row = conn.execute(
+            """
+            SELECT snapshot_date, MAX(captured_at) AS captured_at
+            FROM agent_daily_snapshots
+            WHERE agent_id = ?
+            GROUP BY snapshot_date
+            ORDER BY snapshot_date DESC
+            LIMIT 1
+            """,
+            (agent_id,),
+        ).fetchone()
+        if not latest_date_row:
+            return None
+
+        snapshot_date = latest_date_row["snapshot_date"]
+        rows = conn.execute(
+            "SELECT metric_key, value FROM agent_daily_snapshots "
+            "WHERE agent_id = ? AND snapshot_date = ?",
+            (agent_id, snapshot_date),
+        ).fetchall()
+
+    return {
+        "snapshot_date": snapshot_date,
+        "captured_at": latest_date_row["captured_at"],
+        "metrics": {r["metric_key"]: r["value"] for r in rows},
+    }
+
+
+def load_daily_snapshot(agent_id: str, snapshot_date: str) -> dict | None:
+    """Return a specific day's snapshot for an agent, or None if absent."""
+    with connect() as conn:
+        rows = conn.execute(
+            "SELECT metric_key, value, captured_at FROM agent_daily_snapshots "
+            "WHERE agent_id = ? AND snapshot_date = ?",
+            (agent_id, snapshot_date),
+        ).fetchall()
+    if not rows:
+        return None
+    return {
+        "snapshot_date": snapshot_date,
+        "captured_at": rows[0]["captured_at"],
+        "metrics": {r["metric_key"]: r["value"] for r in rows},
+    }
+
+
+def latest_daily_snapshots() -> list[dict]:
+    """
+    Return latest snapshot for every agent that has any daily history.
+    Result rows are joined with agent_meta so the dashboard has name + email.
+    Each row: {"agent_id", "name", "email", "snapshot_date", "metrics": {...}}.
+    """
+    with connect() as conn:
+        latest_dates = conn.execute(
+            """
+            SELECT agent_id, MAX(snapshot_date) AS snapshot_date
+            FROM agent_daily_snapshots
+            GROUP BY agent_id
+            """
+        ).fetchall()
+
+        results: list[dict] = []
+        for row in latest_dates:
+            agent_id = row["agent_id"]
+            snapshot_date = row["snapshot_date"]
+
+            meta = conn.execute(
+                "SELECT name, email FROM agent_meta WHERE agent_id = ?",
+                (agent_id,),
+            ).fetchone()
+            metric_rows = conn.execute(
+                "SELECT metric_key, value FROM agent_daily_snapshots "
+                "WHERE agent_id = ? AND snapshot_date = ?",
+                (agent_id, snapshot_date),
+            ).fetchall()
+            results.append(
+                {
+                    "agent_id": agent_id,
+                    "name": meta["name"] if meta else agent_id,
+                    "email": meta["email"] if meta else "",
+                    "snapshot_date": snapshot_date,
+                    "metrics": {r["metric_key"]: r["value"] for r in metric_rows},
+                }
+            )
+
+    return results
+
+
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
 
@@ -490,4 +642,8 @@ __all__ = [
     "reject_draft",
     "mark_sent",
     "approve_all",
+    "save_daily_snapshot",
+    "latest_daily_snapshot",
+    "load_daily_snapshot",
+    "latest_daily_snapshots",
 ]

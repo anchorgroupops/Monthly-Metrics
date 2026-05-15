@@ -176,6 +176,45 @@ class TestCmdDraft:
         assert rc == 1
 
 
+# ── cmd_daily ─────────────────────────────────────────────────────────────────
+
+
+class TestCmdDaily:
+    def test_mock_path_persists_snapshot(self, isolated_db):
+        from main import cmd_daily
+        from src import storage
+
+        rc = cmd_daily(_args(mock=True))
+        assert rc == 0
+
+        snaps = storage.latest_daily_snapshots()
+        # mock_daily_results returns 2 agents
+        assert len(snaps) == 2
+
+    def test_missing_api_key_without_mock_returns_1(self, isolated_db, monkeypatch, capsys):
+        from config import settings
+        from main import cmd_daily
+
+        monkeypatch.setattr(settings, "FUB_API_KEY", "")
+
+        rc = cmd_daily(_args(mock=False))
+        assert rc == 1
+        assert "FUB_API_KEY" in capsys.readouterr().out
+
+    def test_pull_failure_returns_1(self, isolated_db, monkeypatch, mocker):
+        from config import settings
+        from main import cmd_daily
+
+        monkeypatch.setattr(settings, "FUB_API_KEY", "test-key")
+        mocker.patch(
+            "src.fub_daily_metrics.pull_daily_metrics",
+            side_effect=RuntimeError("FUB exploded"),
+        )
+
+        rc = cmd_daily(_args(mock=False))
+        assert rc == 1
+
+
 # ── cmd_dashboard ─────────────────────────────────────────────────────────────
 
 

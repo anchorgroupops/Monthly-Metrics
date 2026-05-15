@@ -469,3 +469,128 @@ class TestConnectionLifecycle:
 
         rw = [w for w in recwarn.list if issubclass(w.category, ResourceWarning)]
         assert rw == []
+
+
+# ── Daily snapshots ───────────────────────────────────────────────────────────
+
+
+class TestDailySnapshots:
+    def test_round_trip(self, isolated_db):
+        from src import storage
+
+        storage.save_daily_snapshot(
+            agent_id="42",
+            snapshot_date="2026-05-15",
+            name="Alex",
+            email="alex@x.com",
+            metrics={"contact_rate": 0.85, "call_volume": 17, "activity_points": 1234},
+        )
+
+        snap = storage.latest_daily_snapshot("42")
+        assert snap is not None
+        assert snap["snapshot_date"] == "2026-05-15"
+        assert snap["metrics"]["contact_rate"] == 0.85
+        assert snap["metrics"]["call_volume"] == 17.0
+        assert snap["metrics"]["activity_points"] == 1234.0
+
+    def test_returns_none_for_unknown_agent(self, isolated_db):
+        from src import storage
+
+        assert storage.latest_daily_snapshot("nope") is None
+
+    def test_upsert_overwrites_same_day(self, isolated_db):
+        """Re-saving the same (agent, date) replaces the value, no duplicates."""
+        from src import storage
+
+        storage.save_daily_snapshot(
+            agent_id="42",
+            snapshot_date="2026-05-15",
+            name="Alex",
+            email="alex@x.com",
+            metrics={"call_volume": 5},
+        )
+        storage.save_daily_snapshot(
+            agent_id="42",
+            snapshot_date="2026-05-15",
+            name="Alex",
+            email="alex@x.com",
+            metrics={"call_volume": 17},
+        )
+        snap = storage.latest_daily_snapshot("42")
+        assert snap["metrics"]["call_volume"] == 17.0
+
+    def test_latest_picks_most_recent_date(self, isolated_db):
+        from src import storage
+
+        for d, calls in [("2026-05-13", 1), ("2026-05-15", 9), ("2026-05-14", 5)]:
+            storage.save_daily_snapshot(
+                agent_id="42",
+                snapshot_date=d,
+                name="Alex",
+                email="alex@x.com",
+                metrics={"call_volume": calls},
+            )
+        snap = storage.latest_daily_snapshot("42")
+        assert snap["snapshot_date"] == "2026-05-15"
+        assert snap["metrics"]["call_volume"] == 9.0
+
+    def test_load_specific_date(self, isolated_db):
+        from src import storage
+
+        storage.save_daily_snapshot(
+            agent_id="42",
+            snapshot_date="2026-05-13",
+            name="Alex",
+            email="alex@x.com",
+            metrics={"call_volume": 1},
+        )
+        storage.save_daily_snapshot(
+            agent_id="42",
+            snapshot_date="2026-05-15",
+            name="Alex",
+            email="alex@x.com",
+            metrics={"call_volume": 9},
+        )
+        snap = storage.load_daily_snapshot("42", "2026-05-13")
+        assert snap["metrics"]["call_volume"] == 1.0
+
+    def test_latest_daily_snapshots_lists_all_agents(self, isolated_db):
+        from src import storage
+
+        for aid, name in [("100", "Alice"), ("200", "Bob")]:
+            storage.save_daily_snapshot(
+                agent_id=aid,
+                snapshot_date="2026-05-15",
+                name=name,
+                email=f"{name.lower()}@x.com",
+                metrics={"call_volume": 5},
+            )
+        snaps = storage.latest_daily_snapshots()
+        assert {s["agent_id"] for s in snaps} == {"100", "200"}
+        assert {s["name"] for s in snaps} == {"Alice", "Bob"}
+
+    def test_invalid_date_format_raises(self, isolated_db):
+        from src import storage
+
+        with pytest.raises(ValueError, match="ISO YYYY-MM-DD"):
+            storage.save_daily_snapshot(
+                agent_id="42",
+                snapshot_date="May 15",
+                name="A",
+                email="a@x",
+                metrics={"x": 1},
+            )
+
+    def test_skips_non_numeric_values(self, isolated_db):
+        """raw_json blobs etc shouldn\x27t pollute the metrics table."""
+        from src import storage
+
+        storage.save_daily_snapshot(
+            agent_id="42",
+            snapshot_date="2026-05-15",
+            name="Alex",
+            email="alex@x.com",
+            metrics={"call_volume": 5, "_raw": {"junk": "x"}, "label": "Alex"},
+        )
+        snap = storage.latest_daily_snapshot("42")
+        assert snap["metrics"] == {"call_volume": 5.0}

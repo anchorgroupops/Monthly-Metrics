@@ -128,12 +128,183 @@ def create_app() -> Flask:
 
     csrf.exempt(portal_bp)
 
-    from src.dashboard_daily import bp as daily_bp
-
-    app.register_blueprint(daily_bp)
     app.register_blueprint(portal_bp)
 
     return app
+
+
+# ── Daily dashboard config ────────────────────────────────────────────────────
+
+# HTMX poll cadence for /daily/data (5 min, as specified in the daily-view brief).
+DAILY_POLL_INTERVAL_SECONDS = 300
+
+# Color-coded thresholds for the daily view. Three metrics are scored against
+# Zillow Preferred operational targets; the rest are activity counts shown
+# without a status color (raw value only).
+#   green  → meets target
+#   yellow → within 25% of target
+#   red    → below
+# direction='lower' means a SMALLER value is better (response time).
+DAILY_TARGETS: dict[str, dict] = {
+    "response_time_seconds": {
+        "label": "Speed to Action",
+        "target": 300.0,
+        "yellow_floor": 600.0,
+        "direction": "lower",
+        "unit": "seconds",
+    },
+    "contact_rate": {
+        "label": "Contact Rate",
+        "target": 0.80,
+        "yellow_floor": 0.60,
+        "direction": "higher",
+        "unit": "percent",
+    },
+    "appointment_rate": {
+        "label": "Appointment Rate",
+        "target": 0.20,
+        "yellow_floor": 0.10,
+        "direction": "higher",
+        "unit": "percent",
+    },
+    "pickup_rate": {
+        "label": "Pickup Rate",
+        "target": 0.25,
+        "yellow_floor": 0.15,
+        "direction": "higher",
+        "unit": "percent",
+    },
+}
+
+
+def _classify(value: float | None, target_cfg: dict) -> str:
+    """Return 'green' | 'yellow' | 'red' | 'no_data' for a value vs target."""
+    if value is None:
+        return "no_data"
+    target = target_cfg["target"]
+    yellow = target_cfg["yellow_floor"]
+    if target_cfg["direction"] == "lower":
+        if value <= target:
+            return "green"
+        if value <= yellow:
+            return "yellow"
+        return "red"
+    if value >= target:
+        return "green"
+    if value >= yellow:
+        return "yellow"
+    return "red"
+
+
+def _progress_pct(value: float | None, target_cfg: dict) -> int:
+    """Width % for the progress bar. Capped at 100."""
+    if value is None:
+        return 0
+    target = target_cfg["target"]
+    if target_cfg["direction"] == "lower":
+        # 0s → 100%, target → 100%, 2*target → 50%, ≥3*target → ~33%
+        if value <= target:
+            return 100
+        return max(5, int(round(100 * target / value)))
+    if target == 0:
+        return 100
+    return max(0, min(100, int(round(100 * value / target))))
+
+
+def _build_daily_row(snapshot: dict) -> dict:
+    """Shape a storage.latest_daily_snapshots() row for the template."""
+    metrics = snapshot.get("metrics") or {}
+    scored = {
+        key: {
+            "value": metrics.get(key),
+            "status": _classify(metrics.get(key), cfg),
+            "pct": _progress_pct(metrics.get(key), cfg),
+            "label": cfg["label"],
+            "unit": cfg["unit"],
+            "target": cfg["target"],
+            "direction": cfg["direction"],
+        }
+        for key, cfg in DAILY_TARGETS.items()
+    }
+    return {
+        "agent_id": snapshot["agent_id"],
+        "name": snapshot["name"],
+        "email": snapshot["email"],
+        "snapshot_date": snapshot["snapshot_date"],
+        "scored": scored,
+        "activity_points": int(metrics.get("activity_points") or 0),
+        "appointments_set": int(metrics.get("appointments_set") or 0),
+        "conversations_2min": int(metrics.get("conversations_2min") or 0),
+        "call_volume": int(metrics.get("call_volume") or 0),
+        "texts_sent": int(metrics.get("texts_sent") or 0),
+        "emails_sent": int(metrics.get("emails_sent") or 0),
+        "total_zillow_leads": int(metrics.get("total_zillow_leads") or 0),
+        "new_leads_not_acted_on": int(metrics.get("new_leads_not_acted_on") or 0),
+    }
+
+
+def _team_averages(rows: list[dict]) -> dict:
+    """Mean of each scored metric across rows that have a value, plus totals."""
+    if not rows:
+        return {"scored": {}, "totals": {}, "agents": 0}
+
+    scored: dict = {}
+    for key, cfg in DAILY_TARGETS.items():
+        values = [r["scored"][key]["value"] for r in rows if r["scored"][key]["value"] is not None]
+        avg = sum(values) / len(values) if values else None
+        scored[key] = {
+            "value": avg,
+            "status": _classify(avg, cfg),
+            "pct": _progress_pct(avg, cfg),
+            "label": cfg["label"],
+            "unit": cfg["unit"],
+        }
+
+    totals = {
+        "activity_points": sum(r["activity_points"] for r in rows),
+        "appointments_set": sum(r["appointments_set"] for r in rows),
+        "conversations_2min": sum(r["conversations_2min"] for r in rows),
+        "call_volume": sum(r["call_volume"] for r in rows),
+        "texts_sent": sum(r["texts_sent"] for r in rows),
+        "emails_sent": sum(r["emails_sent"] for r in rows),
+        "total_zillow_leads": sum(r["total_zillow_leads"] for r in rows),
+        "new_leads_not_acted_on": sum(r["new_leads_not_acted_on"] for r in rows),
+    }
+    return {"scored": scored, "totals": totals, "agents": len(rows)}
+
+
+def _daily_pipeline_worker(run_id: int) -> None:
+    """Background worker for the /daily/refresh button."""
+    try:
+        from src.fub_daily_metrics import pull_daily_metrics, save_results
+
+        results = pull_daily_metrics()
+        if not results:
+            storage.finish_run(run_id, "ok", "no agents")
+            return
+        saved = save_results(results)
+        errored = sum(1 for r in results if r.get("_error"))
+        storage.finish_run(
+            run_id,
+            "ok",
+            f"daily snapshot saved for {saved} agent(s), {errored} errored",
+        )
+        log.info("Daily pull complete: run #%d", run_id)
+    except Exception as exc:
+        log.exception("Daily-pull pipeline failed")
+        try:
+            storage.finish_run(run_id, "error", str(exc)[:500])
+        except Exception:
+            log.exception("Failed to mark daily run as errored")
+        try:
+            from src.notifier import notify_admin_failure
+
+            notify_admin_failure(
+                "Anchor Group: daily pull failed",
+                f"Run #{run_id} failed during the daily-pipeline pull.\n\nError: {exc}",
+            )
+        except Exception:
+            log.exception("Failed to send admin failure notification")
 
 
 # ── Manual-pull background pipeline ───────────────────────────────────────────
@@ -411,6 +582,59 @@ def _register_routes(app: Flask, limiter: Limiter) -> None:
             "admin/upload.html",
             metric_keys=metric_keys(load_thresholds()),
         )
+
+    @app.route("/daily")
+    @login_required
+    def daily():
+        """Daily operational-activity dashboard. Reads latest snapshot per agent."""
+        return render_template(
+            "admin/daily.html",
+            poll_interval_seconds=DAILY_POLL_INTERVAL_SECONDS,
+        )
+
+    @app.route("/daily/data")
+    @login_required
+    def daily_data():
+        """HTMX-swapped table fragment. Polled every DAILY_POLL_INTERVAL_SECONDS."""
+        snapshots = storage.latest_daily_snapshots()
+        rows = [_build_daily_row(s) for s in snapshots]
+        rows.sort(key=lambda r: r["activity_points"] or 0, reverse=True)
+
+        team_avg = _team_averages(rows)
+        active_run = storage.get_active_run()
+        latest_run = storage.latest_run(source="fub-daily")
+
+        return render_template(
+            "admin/_daily_table.html",
+            rows=rows,
+            team=team_avg,
+            active=active_run,
+            latest=latest_run,
+            poll_interval_seconds=DAILY_POLL_INTERVAL_SECONDS,
+            targets=DAILY_TARGETS,
+        )
+
+    @app.route("/daily/refresh", methods=["POST"])
+    @login_required
+    def daily_refresh():
+        from config.settings import FUB_API_KEY
+
+        if not FUB_API_KEY:
+            flash("FUB_API_KEY is not set in the deployment environment.", "error")
+            return redirect(url_for("daily"))
+        if storage.get_active_run():
+            flash("A pull is already in progress.", "error")
+            return redirect(url_for("daily"))
+
+        run_id = storage.start_run(source="fub-daily")
+        threading.Thread(
+            target=_daily_pipeline_worker,
+            args=(run_id,),
+            daemon=True,
+            name=f"daily-{run_id}",
+        ).start()
+        flash("Daily pull started — refresh in ~30 seconds.", "success")
+        return redirect(url_for("daily"))
 
     @app.route("/pull-now", methods=["POST"])
     @login_required
