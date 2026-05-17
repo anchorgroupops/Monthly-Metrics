@@ -116,13 +116,15 @@ def _get(path: str, params: dict | None = None) -> dict:
 # ── Per-lead people fetch ─────────────────────────────────────────────────────
 
 
-def _fetch_people_for_agent(agent_id: str, start_date: str, end_date: str) -> list[dict]:
+def _fetch_people_raw(agent_id: str, start_date: str, end_date: str) -> list[dict]:
     """
-    Page through /v1/people for one agent, returning every Zillow Preferred lead
-    created within [start_date, end_date] (ISO YYYY-MM-DD).
-    """
-    from src.fub_daily_metrics import is_zillow_preferred
+    Page through /v1/people for one agent without any source filtering.
 
+    Returns every person assigned to ``agent_id`` whose ``created`` falls in
+    [start_date, end_date]. Used both by the production pull (which then
+    applies ``is_zillow_preferred``) and by the diagnostic CLI (which wants
+    the unfiltered raw view to surface mis-tagged Zillow leads).
+    """
     collected: list[dict] = []
     offset = 0
     limit = 100
@@ -138,7 +140,7 @@ def _fetch_people_for_agent(agent_id: str, start_date: str, end_date: str) -> li
         }
         data = _get("/people", params=params)
         people = data.get("people") or []
-        collected.extend(p for p in people if is_zillow_preferred(p))
+        collected.extend(people)
 
         meta = data.get("_metadata") or {}
         total = meta.get("total")
@@ -152,6 +154,16 @@ def _fetch_people_for_agent(agent_id: str, start_date: str, end_date: str) -> li
             break
 
     return collected
+
+
+def _fetch_people_for_agent(agent_id: str, start_date: str, end_date: str) -> list[dict]:
+    """
+    Page through /v1/people for one agent, returning every Zillow Preferred lead
+    created within [start_date, end_date] (ISO YYYY-MM-DD).
+    """
+    from src.fub_daily_metrics import is_zillow_preferred
+
+    return [p for p in _fetch_people_raw(agent_id, start_date, end_date) if is_zillow_preferred(p)]
 
 
 # ── Appointments fetch ────────────────────────────────────────────────────────
@@ -318,6 +330,8 @@ def fetch_all_agents(period: str | None = None) -> list[dict]:
     period_label = start_dt.strftime("%B %Y")
 
     results = []
+    empty_names: list[str] = []
+    error_names: list[str] = []
     for agent_cfg in roster:
         agent_id = agent_cfg["fub_agent_id"]
         name = agent_cfg["name"]
@@ -325,18 +339,34 @@ def fetch_all_agents(period: str | None = None) -> list[dict]:
 
         try:
             people = _fetch_people_for_agent(agent_id, start_date, end_date)
-            log.info("  %s: %d Zillow leads found", name, len(people))
-            # Appointments endpoint is best-effort; soft-fail is handled inside.
             appointments = _fetch_appointments_for_agent(agent_id, start_date, end_date)
-            log.info("  %s: %d appointments found", name, len(appointments))
+            status = "ok" if people else "empty"
+            log.info(
+                "pull: %s id=%s leads=%d appts=%d status=%s",
+                name,
+                agent_id,
+                len(people),
+                len(appointments),
+                status,
+            )
+            if not people:
+                empty_names.append(name)
             results.append(
                 _compute_monthly_metrics(
                     people, appointments, agent_cfg, period_label, start_date, end_date
                 )
             )
         except Exception as exc:
-            log.error("Failed to fetch metrics for %s: %s", name, exc)
+            log.error("pull: %s id=%s status=error error=%s", name, agent_id, exc)
+            error_names.append(name)
             results.append(_null_record(agent_cfg, period_label, start_date, end_date))
+
+    with_leads = len(results) - len(empty_names) - len(error_names)
+    log.info("pull summary: %d/%d agents with leads", with_leads, len(results))
+    if empty_names:
+        log.info("pull summary: no-leads agents: %s", ", ".join(empty_names))
+    if error_names:
+        log.warning("pull summary: errored agents: %s", ", ".join(error_names))
 
     return results
 

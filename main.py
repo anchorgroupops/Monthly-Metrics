@@ -5,6 +5,7 @@ Anchor Group Monthly Metrics — CLI Entry Point
 Usage:
   python main.py --mode research                       # Refresh KPIs + thresholds
   python main.py --mode pull                           # Fetch FUB metrics → SQLite
+  python main.py --mode diagnose [--agent NAME]        # Probe FUB /people, no DB writes
   python main.py --mode daily                          # Daily MTD activity snapshot → SQLite
   python main.py --mode daily --mock                   # Same, with synthetic data
   python main.py --mode upload <file.csv|file.json>    # Ingest admin upload
@@ -115,6 +116,22 @@ def cmd_pull(args) -> int:
         log.exception("FUB pull failed")
         print(f"  ERROR: {exc}")
         return 1
+
+
+# -- Mode: diagnose ------------------------------------------------------------
+
+
+def cmd_diagnose(args) -> int:
+    """
+    Read-only probe against /v1/people. For each agent in the roster (or a
+    single ``--agent NAME``) prints raw lead count, Zillow-matched count, and
+    a histogram of sourceId / source values — so we can tell whether a
+    "No Data" agent had zero Zillow leads or whether the filter is dropping
+    real leads. Does not write to SQLite.
+    """
+    from src.fub_diagnose import run_diagnose
+
+    return run_diagnose(agent_name=args.agent)
 
 
 # ── Mode: daily ───────────────────────────────────────────────────────────────
@@ -431,6 +448,7 @@ def main() -> int:
         choices=[
             "research",
             "pull",
+            "diagnose",
             "daily",
             "upload",
             "review",
@@ -492,6 +510,8 @@ def main() -> int:
         return cmd_research(args)
     if args.mode == "pull":
         return cmd_pull(args)
+    if args.mode == "diagnose":
+        return cmd_diagnose(args)
     if args.mode == "daily":
         return cmd_daily(args)
     if args.mode == "upload":

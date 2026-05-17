@@ -484,6 +484,120 @@ class TestFetchAllAgents:
         assert result[0]["speed_to_action"] is None
         assert result[0]["_error"] is True
 
+    @responses.activate
+    def test_logs_per_agent_summary_with_empty_and_errored(self, monkeypatch, mocker, caplog):
+        """The summary log line should call out which agents returned no leads."""
+        import logging
+
+        from src import fub_client
+
+        monkeypatch.setattr(fub_client, "FUB_API_KEY", "test-key")
+        monkeypatch.setattr(fub_client, "FUB_BASE_URL", "https://api.example.com")
+        monkeypatch.setattr(fub_client, "OVERRIDE_REPORT_MONTH", "2026-04")
+        monkeypatch.setattr(fub_client, "FUB_MAX_RETRIES", 1)
+        monkeypatch.setattr(
+            fub_client,
+            "AGENTS",
+            [
+                {"name": "Alice", "email": "alice@x.com", "fub_agent_id": "100"},
+                {"name": "Bob", "email": "bob@x.com", "fub_agent_id": "200"},
+                {"name": "Carol", "email": "carol@x.com", "fub_agent_id": "300"},
+            ],
+        )
+        mocker.patch.object(fub_client.time, "sleep")
+
+        # Alice → 1 Zillow lead, Bob → 0 leads (empty), Carol → 500 error.
+        def people_callback(request):
+            url = request.url
+            if "assignedUserId=100" in url:
+                return (
+                    200,
+                    {},
+                    '{"_metadata": {"total": 1}, "people": [{"sourceId": 14, '
+                    '"stageId": 28, "created": "2026-04-01T10:00:00Z"}]}',
+                )
+            if "assignedUserId=200" in url:
+                return (200, {}, '{"_metadata": {"total": 0}, "people": []}')
+            return (500, {}, "boom")
+
+        responses.add_callback(
+            responses.GET,
+            "https://api.example.com/people",
+            callback=people_callback,
+        )
+        responses.add(
+            responses.GET,
+            "https://api.example.com/appointments",
+            json={"_metadata": {"total": 0}, "appointments": []},
+            status=200,
+        )
+
+        caplog.set_level(logging.INFO, logger="src.fub_client")
+        result = fub_client.fetch_all_agents()
+
+        assert len(result) == 3
+        messages = [r.getMessage() for r in caplog.records]
+        # Per-agent line for each agent with its status.
+        assert any("pull: Alice" in m and "status=ok" in m for m in messages)
+        assert any("pull: Bob" in m and "status=empty" in m for m in messages)
+        assert any("pull: Carol" in m and "status=error" in m for m in messages)
+        # Summary line names the empty/errored agents.
+        assert any("pull summary: 1/3 agents with leads" in m for m in messages)
+        assert any("no-leads agents: Bob" in m for m in messages)
+        assert any("errored agents: Carol" in m for m in messages)
+
+
+# ── _fetch_people_raw / _fetch_people_for_agent ───────────────────────────────
+
+
+class TestFetchPeople:
+    @responses.activate
+    def test_raw_returns_unfiltered_people(self, monkeypatch):
+        """_fetch_people_raw must not apply the Zillow filter."""
+        from src import fub_client
+
+        monkeypatch.setattr(fub_client, "FUB_API_KEY", "test-key")
+        monkeypatch.setattr(fub_client, "FUB_BASE_URL", "https://api.example.com")
+
+        responses.get(
+            "https://api.example.com/people",
+            json={
+                "_metadata": {"total": 2},
+                "people": [
+                    {"id": 1, "sourceId": 14, "source": "Zillow Preferred"},
+                    {"id": 2, "sourceId": 7, "source": "Web Form"},
+                ],
+            },
+            status=200,
+        )
+
+        people = fub_client._fetch_people_raw("100", "2026-04-01", "2026-04-30")
+        assert len(people) == 2  # both kept; no filter applied
+
+    @responses.activate
+    def test_for_agent_applies_zillow_filter(self, monkeypatch):
+        """_fetch_people_for_agent only returns Zillow Preferred leads."""
+        from src import fub_client
+
+        monkeypatch.setattr(fub_client, "FUB_API_KEY", "test-key")
+        monkeypatch.setattr(fub_client, "FUB_BASE_URL", "https://api.example.com")
+
+        responses.get(
+            "https://api.example.com/people",
+            json={
+                "_metadata": {"total": 2},
+                "people": [
+                    {"id": 1, "sourceId": 14, "source": "Zillow Preferred"},
+                    {"id": 2, "sourceId": 7, "source": "Web Form"},
+                ],
+            },
+            status=200,
+        )
+
+        people = fub_client._fetch_people_for_agent("100", "2026-04-01", "2026-04-30")
+        assert len(people) == 1
+        assert people[0]["sourceId"] == 14
+
 
 # ── _compute_monthly_metrics ──────────────────────────────────────────────────
 
