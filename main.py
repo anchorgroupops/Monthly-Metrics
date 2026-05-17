@@ -91,7 +91,7 @@ def cmd_pull(args) -> int:
             a.get("pCVR") is None
             and a.get("pickup_rate") is None
             and a.get("csat") is None
-            and a.get("zhl_transfers") is None
+            and a.get("zhl_pre_approval") is None
             for a in agents
         )
 

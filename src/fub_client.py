@@ -1,20 +1,18 @@
 """
-Follow Up Boss API client — monthly Zillow Preferred metrics.
+Follow Up Boss API client — monthly Zillow Preferred scorecard.
 
-Data sources (per FUB Open API guidance):
+The 2026 scorecard has four metrics. Only one is derivable from FUB; the
+other three come from Zillow's monthly Performance Report (CSV upload):
 
-  speed_to_action  → /people: compare lead.created to first manual contact
-                     (firstCall / lastSentText / lastSentEmail on person record)
-  work_with_rate   → /people: fraction of leads that moved past the New stage
-                     (best available proxy; FUB has no "signed working agreement" field)
-  appt_set_rate    → /appointments: appointments created for agent in the period
-                     divided by total Zillow leads in the period
-  appt_met_rate    → /appointments: outcomes of "Completed"/"Met"/"Showed"
-                     divided by total appointments set
-  csat             → Not available via FUB API. Zillow's CSAT/NPS data lives in
-                     their proprietary "Best of Zillow" report and is not exposed
-                     through a standard FUB endpoint. Stored as None until a
-                     Zillow API integration is added.
+  pCVR              → Zillow Premier Performance Report only. None from FUB.
+  pickup_rate       → /people: fraction of Zillow leads with at least one
+                      inbound call connected (callsIncoming > 0). Best proxy
+                      available from /people without per-call data.
+  zhl_pre_approval  → Zillow Home Loans report only. None from FUB.
+  csat              → Zillow "Best of Zillow" report only. None from FUB.
+
+The pull therefore exists primarily to seed the roster and any pickup_rate
+proxy. The admin uploads the Zillow CSV via /upload to populate the rest.
 
 FUB API docs: https://docs.followupboss.com/reference
 """
@@ -23,7 +21,6 @@ import base64
 import logging
 import time
 from datetime import date, timedelta
-from statistics import median
 
 import requests
 
@@ -168,10 +165,6 @@ def _fetch_people_for_agent(agent_id: str, start_date: str, end_date: str) -> li
 
 # ── Appointments fetch ────────────────────────────────────────────────────────
 
-# FUB appointment outcome values that indicate the lead actually showed up.
-# The exact strings are tenant/FUB-version specific — add aliases as needed.
-_APPT_MET_OUTCOMES = {"completed", "met", "showed", "show", "shown"}
-
 
 def _fetch_appointments_for_agent(agent_id: str, start_date: str, end_date: str) -> list[dict]:
     """
@@ -228,19 +221,6 @@ def _fetch_appointments_for_agent(agent_id: str, start_date: str, end_date: str)
     return collected
 
 
-def _is_appt_met(appt: dict) -> bool:
-    """True if the appointment outcome indicates the lead showed up."""
-    outcome = (appt.get("outcome") or appt.get("outcomeType") or "").strip().lower()
-    return outcome in _APPT_MET_OUTCOMES
-
-
-# ── Stage-id constants (used only for work_with_rate proxy) ──────────────────
-
-# Empirically observed FUB stage ids for The Anchor Group:
-#   26 = New, 27 = Attempted Contact, 28 = Contacted, 29 = Appt Set, 30 = Met
-_STAGE_NEW = 26
-
-
 def fetch_users() -> list[dict]:
     """
     Discover the agent roster from FUB's /v1/users endpoint.
@@ -295,21 +275,20 @@ def fetch_users() -> list[dict]:
 
 def fetch_all_agents(period: str | None = None) -> list[dict]:
     """
-    Compute monthly Zillow Preferred metrics for every agent from /v1/people.
+    Compute monthly Zillow Preferred scorecard metrics for every agent.
 
     Returns a list of dicts:
     {
-        "agent_id":        str,
-        "name":            str,
-        "email":           str,
-        "period":          str,    # e.g. "April 2026"
-        "start_date":      str,
-        "end_date":        str,
-        "speed_to_action": float | None,  # median seconds to first contact (lower_is_better)
-        "work_with_rate":  float | None,  # fraction of leads moved past New stage (0.0–1.0)
-        "csat":            float | None,  # always None — not available from FUB people data
-        "appt_set_rate":   float | None,  # fraction with appointment set/met (0.0–1.0)
-        "appt_met_rate":   float | None,  # fraction of set appts that were met (0.0–1.0)
+        "agent_id":         str,
+        "name":             str,
+        "email":            str,
+        "period":           str,    # e.g. "April 2026"
+        "start_date":       str,
+        "end_date":         str,
+        "pCVR":             float | None,  # Zillow CSV-only
+        "pickup_rate":      float | None,  # proxy from /people callsIncoming
+        "zhl_pre_approval": float | None,  # Zillow CSV-only
+        "csat":             float | None,  # Zillow CSV-only
     }
     """
     if not FUB_API_KEY:
@@ -371,32 +350,6 @@ def fetch_all_agents(period: str | None = None) -> list[dict]:
     return results
 
 
-def _first_contact_seconds(person: dict) -> float | None:
-    """Seconds from lead created to earliest of (firstCall, lastSentText, lastSentEmail)."""
-    from datetime import UTC, datetime
-
-    def _parse(val: str | None) -> datetime | None:
-        if not val:
-            return None
-        for fmt in ("%Y-%m-%dT%H:%M:%SZ", "%Y-%m-%dT%H:%M:%S+00:00", "%Y-%m-%dT%H:%M:%S"):
-            try:
-                dt = datetime.strptime(val, fmt)
-                return dt.replace(tzinfo=UTC)
-            except ValueError:
-                continue
-        return None
-
-    created = _parse(person.get("created"))
-    if created is None:
-        return None
-
-    candidates = [_parse(person.get(k)) for k in ("firstCall", "lastSentText", "lastSentEmail")]
-    valid = [c for c in candidates if c is not None and c >= created]
-    if not valid:
-        return None
-    return max(0.0, (min(valid) - created).total_seconds())
-
-
 def _compute_monthly_metrics(
     people: list[dict],
     appointments: list[dict],
@@ -406,42 +359,31 @@ def _compute_monthly_metrics(
     end: str,
 ) -> dict:
     """
-    Compute monthly ZP metrics.
+    Compute monthly Zillow Preferred scorecard metrics for one agent.
 
-    people       → /people (Zillow Preferred leads for the period)
-    appointments → /appointments (appointments set for the period); may be []
-                   if the endpoint was unavailable.
+    Only ``pickup_rate`` is derivable from FUB person data — the other three
+    scorecard metrics (``pCVR``, ``zhl_pre_approval``, ``csat``) live in the
+    Zillow Premier Performance Report and must be populated via CSV upload.
+    They're emitted as None here so storage.save_period still writes a row
+    per agent/metric and the dashboard can render "No Data" until the CSV is
+    ingested.
+
+    ``appointments`` is accepted for API compatibility with the existing
+    fetch loop but isn't part of the current 4-metric scorecard.
     """
+    del appointments  # not used by the current scorecard
+
     total = len(people)
 
     if total == 0:
         return _null_record(agent_cfg, period, start, end)
 
-    # speed_to_action + work_with_rate from People data
-    response_times: list[float] = []
-    accepted_count = 0
-
-    for p in people:
-        rt = _first_contact_seconds(p)
-        if rt is not None:
-            response_times.append(rt)
-        stage_id = p.get("stageId")
-        if isinstance(stage_id, int) and stage_id > _STAGE_NEW:
-            accepted_count += 1
-
-    speed_to_action = median(response_times) if response_times else None
-    work_with_rate = accepted_count / total
-
-    # appt_set_rate + appt_met_rate from Appointments data (preferred)
-    # Falls back to None if appointments list is empty (endpoint unavailable).
-    if appointments:
-        appt_set_count = len(appointments)
-        appt_met_count = sum(1 for a in appointments if _is_appt_met(a))
-        appt_set_rate = appt_set_count / total
-        appt_met_rate = appt_met_count / appt_set_count if appt_set_count > 0 else None
-    else:
-        appt_set_rate = None
-        appt_met_rate = None
+    # Pickup rate: fraction of Zillow leads where any inbound call connected.
+    # FUB's person record exposes ``callsIncoming`` (count of incoming calls
+    # that reached the agent). Lacking call-level pickup data on /people, the
+    # next-best proxy is: lead had at least one connected call.
+    connected = sum(1 for p in people if int(p.get("callsIncoming") or 0) > 0)
+    pickup_rate = connected / total if total else None
 
     return {
         "agent_id": agent_cfg["fub_agent_id"],
@@ -450,11 +392,10 @@ def _compute_monthly_metrics(
         "period": period,
         "start_date": start,
         "end_date": end,
-        "speed_to_action": speed_to_action,
-        "work_with_rate": work_with_rate,
-        "csat": None,  # Zillow proprietary — not available via FUB API
-        "appt_set_rate": appt_set_rate,
-        "appt_met_rate": appt_met_rate,
+        "pCVR": None,
+        "pickup_rate": pickup_rate,
+        "zhl_pre_approval": None,
+        "csat": None,
     }
 
 
@@ -467,11 +408,10 @@ def _null_record(agent_cfg: dict, period: str, start: str, end: str) -> dict:
         "period": period,
         "start_date": start,
         "end_date": end,
-        "speed_to_action": None,
-        "work_with_rate": None,
+        "pCVR": None,
+        "pickup_rate": None,
+        "zhl_pre_approval": None,
         "csat": None,
-        "appt_set_rate": None,
-        "appt_met_rate": None,
         "_error": True,
     }
 
@@ -493,11 +433,10 @@ def mock_agents(period: str | None = None) -> list[dict]:
             "period": period_label,
             "start_date": "2026-04-01",
             "end_date": "2026-04-30",
-            "speed_to_action": 210.0,  # 3.5 min — green
-            "work_with_rate": 0.55,  # green
+            "pCVR": 0.32,  # green (target 0.25)
+            "pickup_rate": 0.42,  # green
+            "zhl_pre_approval": 0.14,  # green
             "csat": 0.91,  # green
-            "appt_set_rate": 0.65,  # green
-            "appt_met_rate": 0.78,  # green
         },
         {
             "agent_id": "mock-002",
@@ -506,11 +445,10 @@ def mock_agents(period: str | None = None) -> list[dict]:
             "period": period_label,
             "start_date": "2026-04-01",
             "end_date": "2026-04-30",
-            "speed_to_action": 480.0,  # 8 min — yellow
-            "work_with_rate": 0.42,  # yellow
+            "pCVR": 0.22,  # yellow
+            "pickup_rate": 0.21,  # yellow
+            "zhl_pre_approval": 0.08,  # yellow
             "csat": 0.78,  # yellow
-            "appt_set_rate": 0.52,  # yellow
-            "appt_met_rate": 0.58,  # yellow
         },
         {
             "agent_id": "mock-003",
@@ -519,10 +457,9 @@ def mock_agents(period: str | None = None) -> list[dict]:
             "period": period_label,
             "start_date": "2026-04-01",
             "end_date": "2026-04-30",
-            "speed_to_action": 750.0,  # 12.5 min — red
-            "work_with_rate": 0.31,  # red
+            "pCVR": 0.15,  # red
+            "pickup_rate": 0.15,  # red
+            "zhl_pre_approval": 0.04,  # red
             "csat": 0.72,  # red
-            "appt_set_rate": 0.38,  # red
-            "appt_met_rate": 0.45,  # red
         },
     ]

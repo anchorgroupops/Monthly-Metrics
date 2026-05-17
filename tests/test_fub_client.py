@@ -392,52 +392,23 @@ class TestFetchAllAgents:
             [{"name": "Alice", "email": "alice@x.com", "fub_agent_id": "100"}],
         )
 
-        # 4 Zillow leads, 3 accepted; 2 appointments set (1 completed) from /appointments
+        # 4 Zillow leads; 2 of them have incoming calls → pickup_rate = 0.5.
         responses.get(
             "https://api.example.com/people",
             json={
                 "_metadata": {"total": 4},
                 "people": [
-                    {
-                        "id": 1,
-                        "sourceId": 14,
-                        "stageId": 28,
-                        "created": "2026-04-01T10:00:00Z",
-                        "firstCall": "2026-04-01T10:04:00Z",   # 240s
-                    },
-                    {
-                        "id": 2,
-                        "sourceId": 14,
-                        "stageId": 28,
-                        "created": "2026-04-02T10:00:00Z",
-                        "firstCall": "2026-04-02T10:05:00Z",   # 300s
-                    },
-                    {
-                        "id": 3,
-                        "sourceId": 14,
-                        "stageId": 28,
-                        "created": "2026-04-03T10:00:00Z",
-                        "firstCall": "2026-04-03T10:06:00Z",   # 360s
-                    },
-                    {
-                        "id": 4,
-                        "sourceId": 14,
-                        "stageId": 26,  # New — not accepted
-                        "created": "2026-04-04T10:00:00Z",
-                    },
+                    {"id": 1, "sourceId": 14, "callsIncoming": 1},
+                    {"id": 2, "sourceId": 14, "callsIncoming": 1},
+                    {"id": 3, "sourceId": 14, "callsIncoming": 0},
+                    {"id": 4, "sourceId": 14},
                 ],
             },
             status=200,
         )
         responses.get(
             "https://api.example.com/appointments",
-            json={
-                "_metadata": {"total": 2},
-                "appointments": [
-                    {"id": 10, "userId": "100", "outcome": "Completed"},
-                    {"id": 11, "userId": "100", "outcome": "No Show"},
-                ],
-            },
+            json={"_metadata": {"total": 0}, "appointments": []},
             status=200,
         )
 
@@ -447,14 +418,10 @@ class TestFetchAllAgents:
         agent = result[0]
         assert agent["agent_id"] == "100"
         assert agent["period"] == "April 2026"
-        # 3 of 4 accepted (stageId > 26)
-        assert agent["work_with_rate"] == pytest.approx(0.75)
-        # 2 appointments / 4 leads = 0.5
-        assert agent["appt_set_rate"] == pytest.approx(0.5)
-        # 1 of 2 appointments completed
-        assert agent["appt_met_rate"] == pytest.approx(0.5)
-        # median of 240, 300, 360 = 300s
-        assert agent["speed_to_action"] == pytest.approx(300.0)
+        assert agent["pickup_rate"] == pytest.approx(0.5)
+        # pCVR / ZHL pre-approval / CSAT come from Zillow's CSV, not FUB.
+        assert agent["pCVR"] is None
+        assert agent["zhl_pre_approval"] is None
         assert agent["csat"] is None
 
     @responses.activate
@@ -481,7 +448,7 @@ class TestFetchAllAgents:
 
         assert len(result) == 1
         assert result[0]["agent_id"] == "200"
-        assert result[0]["speed_to_action"] is None
+        assert result[0]["pickup_rate"] is None
         assert result[0]["_error"] is True
 
     @responses.activate
@@ -609,54 +576,36 @@ class TestComputeMonthlyMetrics:
         cfg = {"fub_agent_id": "100", "name": "Alice", "email": "alice@x.com"}
         out = _compute_monthly_metrics([], [], cfg, "April 2026", "2026-04-01", "2026-04-30")
 
-        assert out["speed_to_action"] is None
-        assert out["work_with_rate"] is None
+        assert out["pCVR"] is None
+        assert out["pickup_rate"] is None
+        assert out["zhl_pre_approval"] is None
+        assert out["csat"] is None
         assert out["_error"] is True
 
-    def test_speed_to_action_is_median(self):
+    def test_pickup_rate_is_fraction_of_leads_with_an_incoming_call(self):
         from src.fub_client import _compute_monthly_metrics
 
         cfg = {"fub_agent_id": "100", "name": "Alice", "email": "alice@x.com"}
         people = [
-            {
-                "sourceId": 14,
-                "stageId": 28,
-                "created": "2026-04-01T10:00:00Z",
-                "firstCall": "2026-04-01T10:01:00Z",   # 60s
-            },
-            {
-                "sourceId": 14,
-                "stageId": 28,
-                "created": "2026-04-02T10:00:00Z",
-                "firstCall": "2026-04-02T10:05:00Z",   # 300s
-            },
-            {
-                "sourceId": 14,
-                "stageId": 28,
-                "created": "2026-04-03T10:00:00Z",
-                "firstCall": "2026-04-03T10:10:00Z",   # 600s
-            },
+            {"sourceId": 14, "callsIncoming": 1},
+            {"sourceId": 14, "callsIncoming": 2},
+            {"sourceId": 14, "callsIncoming": 0},
+            {"sourceId": 14},  # missing field treated as 0
         ]
         out = _compute_monthly_metrics(people, [], cfg, "April 2026", "2026-04-01", "2026-04-30")
 
-        assert out["speed_to_action"] == pytest.approx(300.0)
+        assert out["pickup_rate"] == pytest.approx(0.5)
 
-    def test_appt_met_rate_none_when_no_appts_set(self):
+    def test_scorecard_only_metrics_are_none(self):
+        """pCVR, zhl_pre_approval, csat are CSV-sourced; FUB can't compute them."""
         from src.fub_client import _compute_monthly_metrics
 
         cfg = {"fub_agent_id": "100", "name": "Alice", "email": "alice@x.com"}
-        people = [{"sourceId": 14, "stageId": 26, "created": "2026-04-01T10:00:00Z"}]
+        people = [{"sourceId": 14, "callsIncoming": 1}]
         out = _compute_monthly_metrics(people, [], cfg, "April 2026", "2026-04-01", "2026-04-30")
 
-        assert out["appt_met_rate"] is None
-
-    def test_csat_always_none(self):
-        from src.fub_client import _compute_monthly_metrics
-
-        cfg = {"fub_agent_id": "100", "name": "Alice", "email": "alice@x.com"}
-        people = [{"sourceId": 14, "stageId": 28, "created": "2026-04-01T10:00:00Z"}]
-        out = _compute_monthly_metrics(people, [], cfg, "April 2026", "2026-04-01", "2026-04-30")
-
+        assert out["pCVR"] is None
+        assert out["zhl_pre_approval"] is None
         assert out["csat"] is None
 
 
@@ -671,10 +620,9 @@ class TestNullRecord:
         out = _null_record(cfg, "April 2026", "2026-04-01", "2026-04-30")
 
         assert out["agent_id"] == "100"
-        assert out["speed_to_action"] is None
-        assert out["work_with_rate"] is None
-        assert out["appt_set_rate"] is None
-        assert out["appt_met_rate"] is None
+        assert out["pCVR"] is None
+        assert out["pickup_rate"] is None
+        assert out["zhl_pre_approval"] is None
         assert out["csat"] is None
         assert out["_error"] is True
 
@@ -692,7 +640,7 @@ class TestMockAgents:
         assert all(a["period"] == "April 2026" for a in agents)
         assert all("agent_id" in a and a["agent_id"].startswith("mock-") for a in agents)
         assert all("email" in a and "@" in a["email"] for a in agents)
-        assert all("speed_to_action" in a for a in agents)
+        assert all("pCVR" in a for a in agents)
 
     def test_period_override(self):
         from src.fub_client import mock_agents

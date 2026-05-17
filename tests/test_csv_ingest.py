@@ -18,7 +18,7 @@ def test_csv_round_trip(isolated_db, isolated_thresholds):
     agents = parse_file(FIXTURE)
     assert len(agents) == 3
     assert agents[0]["name"] == "Alex Rivera"
-    assert agents[0]["speed_to_action"] == 180.0
+    assert agents[0]["pCVR"] == 0.32
     assert agents[0]["period"] == "April 2026"
 
     save_period(agents, source="csv", file_path=str(FIXTURE))
@@ -26,8 +26,8 @@ def test_csv_round_trip(isolated_db, isolated_thresholds):
     loaded = load_period("April 2026")
     assert len(loaded) == 3
     by_id = {a["agent_id"]: a for a in loaded}
-    assert by_id["mock-001"]["speed_to_action"] == 180.0
-    assert by_id["mock-002"]["work_with_rate"] == 0.41
+    assert by_id["mock-001"]["pCVR"] == 0.32
+    assert by_id["mock-002"]["pickup_rate"] == 0.21
 
 
 def test_csv_missing_required_column(tmp_path, isolated_thresholds):
@@ -58,11 +58,10 @@ def test_json_ingest(tmp_path, isolated_db, isolated_thresholds):
             "name": "Jay",
             "email": "j@x.com",
             "period": "2026-04",
-            "speed_to_action": 250,
-            "work_with_rate": 0.55,
+            "pCVR": 0.30,
+            "pickup_rate": 0.40,
+            "zhl_pre_approval": 0.12,
             "csat": 0.88,
-            "appt_set_rate": 0.65,
-            "appt_met_rate": 0.72,
         }
     ]
     f = tmp_path / "april.json"
@@ -92,10 +91,10 @@ def test_percent_string_coercion(tmp_path, isolated_thresholds):
 
     f = tmp_path / "pct.csv"
     f.write_text(
-        "agent_id,name,email,period,speed_to_action,work_with_rate,csat,appt_set_rate,appt_met_rate\n"
-        "a1,A,a@x.com,April 2026,300,55%,87%,60%,70%\n"
+        "agent_id,name,email,period,pCVR,pickup_rate,zhl_pre_approval,csat\n"
+        "a1,A,a@x.com,April 2026,25%,30%,10%,87%\n"
     )
     agents = parse_file(f)
-    # Trailing % is stripped but value is taken as-is (55 not 0.55).
+    # Trailing % is stripped but value is taken as-is (25 not 0.25).
     # Admins should provide decimals; this test just guards against crashes.
-    assert agents[0]["work_with_rate"] == 55.0
+    assert agents[0]["pickup_rate"] == 30.0
