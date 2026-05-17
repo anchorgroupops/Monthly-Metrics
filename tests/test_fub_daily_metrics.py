@@ -115,6 +115,23 @@ class TestZillowFilter:
     def test_rejects_empty(self):
         assert not fdm.is_zillow_preferred({})
 
+    def test_matches_source_id_as_string(self):
+        assert fdm.is_zillow_preferred({"sourceId": "14", "source": "anything"})
+
+    def test_matches_zillow_premier_variant(self):
+        assert fdm.is_zillow_preferred({"source": "Zillow Premier Agent"})
+        assert fdm.is_zillow_preferred({"source": "zillow premier"})
+
+    def test_rejects_bare_zillow_without_program_word(self):
+        # Plain "Zillow" without preferred/flex/premier shouldn't be assumed
+        # to be Zillow Preferred — could be organic Zillow.com traffic.
+        assert not fdm.is_zillow_preferred({"source": "Zillow"})
+
+    def test_rejects_invalid_source_id(self):
+        # Garbage sourceId values must not crash and must not match.
+        assert not fdm.is_zillow_preferred({"sourceId": "abc", "source": "Web Form"})
+        assert not fdm.is_zillow_preferred({"sourceId": object(), "source": "Web Form"})
+
 
 # ── _response_time_seconds ───────────────────────────────────────────────────
 

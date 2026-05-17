@@ -192,9 +192,17 @@ def _parse_ts(value: Any) -> datetime | None:
 
 def is_zillow_preferred(person: dict) -> bool:
     """True if the person record looks like a Zillow Preferred lead."""
-    if person.get("sourceId") == ZILLOW_SOURCE_ID:
-        return True
+    raw_id = person.get("sourceId")
+    try:
+        if raw_id is not None and int(raw_id) == ZILLOW_SOURCE_ID:
+            return True
+    except (TypeError, ValueError):
+        pass
     source = (person.get("source") or "").strip().lower()
+    if not source:
+        return False
+    if "zillow" in source and ("preferred" in source or "flex" in source or "premier" in source):
+        return True
     return any(name in source for name in ZILLOW_SOURCE_NAMES)
 
 
